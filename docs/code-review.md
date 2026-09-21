@@ -23,7 +23,8 @@
 - TUI model submissions запускаються в окремому Crystal fiber, тому input/render loop не блокується під час provider I/O; generic cancellation/deadline context ще pending.
 - package install перевіряє compressed size та SHA-256 до/після extraction, щоб виявляти package replacement під час install;
 - WASM cancellation не виділяється окремо: runtime має використовувати спільний execution/cancellation механізм host;
-- додано мінімальний deny-by-default `CapabilityBroker` з fiber-aware `PendingApproval`, event-backed allow/deny і gate для effects та Host ToolRouter; model/provider capability не експонується.
+- додано мінімальний deny-by-default `CapabilityBroker` з fiber-aware `PendingApproval`, event-backed allow/deny і gate для effects та Host ToolRouter; model/provider capability не експонується;
+- додано host-owned `Auth::Broker` з OpenAI API-token flow, opaque `CredentialRef` і декларативною конфігурацією Codex ChatGPT flows.
 
 Цей документ зберігає baseline review; findings нижче не видаляються після виправлення, щоб залишалася audit history.
 

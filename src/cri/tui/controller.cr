@@ -4,8 +4,8 @@ module Cri
       getter host : Host
       getter agent : Agent
 
-      def initialize(@host : Host, provider : Provider = Providers::OpenAICompatible.new)
-        @agent = host.agent(provider)
+      def initialize(@host : Host, provider : Provider? = nil)
+        @agent = host.agent(provider || host.openai_provider)
       end
 
       def submit(input : String) : Tuple(Bool, String)

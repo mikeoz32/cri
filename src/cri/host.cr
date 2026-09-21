@@ -10,13 +10,22 @@ module Cri
     getter invoker : Extensions::Invoker
     getter commands : CommandRegistry
     getter capabilities : API::CapabilityBroker
+    getter auth : Auth::Broker
+    getter openai_api_credential : Auth::CredentialRef?
 
-    def initialize(@config : Config = Config.load, @events : EventBus = EventBus.new, @capabilities : API::CapabilityBroker = API::CapabilityBroker.deny_all)
+    def initialize(
+      @config : Config = Config.load,
+      @events : EventBus = EventBus.new,
+      @capabilities : API::CapabilityBroker = API::CapabilityBroker.deny_all,
+      @auth : Auth::Broker = Auth::Broker.new,
+    )
       @extensions = Extensions::Registry.new(config.extension_dirs).discover
       @builtins = ToolRegistry.new
       @builtins.register_builtins
       @builtins.register(ReadFileTool.new(config.cwd))
       @builtins.register(ListFilesTool.new(config.cwd))
+      register_auth_providers
+      @openai_api_credential = auth.import_env("openai-api", "api-key", "OPENAI_API_KEY") || auth.import_env("openai-api", "api-key", "CRI_API_KEY")
       @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities)
       @tools = ToolRouter.new(@builtins, @extensions, @invoker, config.grants)
       @commands = CommandRegistry.new
@@ -28,8 +37,29 @@ module Cri
       Agent.new(provider, tools, events, session)
     end
 
+    def openai_provider : Provider
+      api_key = openai_api_credential.try { |ref| auth.secret(ref) }
+      Providers::OpenAI.new(api_key: api_key)
+    end
+
     def extension_command(name : String) : Extensions::Manifest?
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
+    end
+
+    private def register_auth_providers
+      auth.register(Auth::Provider.new(
+        "openai-api",
+        "OpenAI API",
+        [Auth::Flow.new("api-key", Auth::FlowKind::ApiToken)]
+      ))
+      auth.register(Auth::Provider.new(
+        "openai-codex",
+        "ChatGPT / Codex",
+        [
+          Auth::Flow.new("chatgpt", Auth::FlowKind::OAuthBrowser, {"transport" => "codex-app-server"}),
+          Auth::Flow.new("device", Auth::FlowKind::OAuthDevice, {"transport" => "codex-app-server"}),
+        ]
+      ))
     end
 
     private def register_extension_commands
