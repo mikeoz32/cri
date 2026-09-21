@@ -26,8 +26,8 @@ module Cri
       @builtins.register_builtins
       @builtins.register(ReadFileTool.new(config.cwd))
       @builtins.register(ListFilesTool.new(config.cwd))
-      register_builtin_providers
-      @openai_api_credential = auth.import_env("openai-api", "api-key", "OPENAI_API_KEY") || auth.import_env("openai-api", "api-key", "CRI_API_KEY")
+      Providers::OpenAI::Registration.register(providers)
+      @openai_api_credential = auth.import_env("openai", "api-key", "OPENAI_API_KEY") || auth.import_env("openai", "api-key", "CRI_API_KEY")
       @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities)
       register_extension_provider_hooks
       @tools = ToolRouter.new(@builtins, @extensions, @invoker, config.grants)
@@ -85,15 +85,6 @@ module Cri
 
     def extension_command(name : String) : Extensions::Manifest?
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
-    end
-
-    private def register_builtin_providers
-      providers.register(ProviderRegistration.new(
-        "openai-api",
-        "OpenAI API",
-        "openai",
-        [Auth::Flow.new("api-key", Auth::FlowKind::ApiToken, {"validator" => "openai-models"})]
-      ))
     end
 
     private def register_extension_provider_hooks

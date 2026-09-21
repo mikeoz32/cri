@@ -77,8 +77,11 @@ module Cri
         challenge = Base64.urlsafe_encode(Digest::SHA256.digest(verifier)).gsub("=", "")
         state = Random::Secure.hex(24)
         result = Channel(Tuple(String?, String?, String?)).new(1)
+        configured_redirect = config.redirect_uri
+        callback_uri = configured_redirect.try { |value| URI.parse(value) }
+        callback_path = callback_uri.try(&.path)
         server = HTTP::Server.new do |context|
-          if context.request.path != "/callback"
+          if context.request.path != (callback_path || "/callback")
             context.response.status_code = 404
             next
           end
@@ -94,8 +97,9 @@ module Cri
             result.send({code, returned_state, error})
           end
         end
-        address = server.bind_tcp("127.0.0.1", 0)
-        redirect_uri = (config.redirect_uri || "http://127.0.0.1:{port}/callback").gsub("{port}", address.port.to_s)
+        callback_port = callback_uri.try(&.port) || 0
+        address = server.bind_tcp("127.0.0.1", callback_port)
+        redirect_uri = (configured_redirect || "http://127.0.0.1:{port}/callback").gsub("{port}", address.port.to_s)
         spawn { server.listen }
 
         params = {

@@ -66,14 +66,14 @@ describe Cri::Tui::EventHandler do
     handler = Cri::Tui::EventHandler.new(ui, controller)
 
     handler.handle(Cri::Tui::KeyEvent.character(":")) { }
-    "auth login openai-api".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
+    "auth login openai".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
     handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
     ui.input.masked.should be_true
     "secret-token".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
     handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
     sleep 10.milliseconds
 
-    auth.existing("openai-api", "api-key").should_not be_nil
+    auth.existing("openai", "api-key").should_not be_nil
     ui.transcript.content.should_not contain("secret-token")
     ui.input.content.should be_empty
     ui.input.masked.should be_false

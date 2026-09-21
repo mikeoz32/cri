@@ -29,7 +29,9 @@ host.providers.register(ProviderRegistration.new(
 ```
 
 An extension `init` hook returns the serializable
-`host.provider.register` effect. The host validates it and namespaces the
+`host.provider.register` effect. The first-party OpenAI provider uses the same
+registration shape from `src/cri/providers/openai/registration.cr`; its OAuth
+URLs and client configuration are not part of the generic auth engine. The host validates it and namespaces the
 provider as `extension/<extension-name>/<provider-id>`:
 
 ```json
@@ -67,7 +69,7 @@ provider/transport adapter.
 The first implemented flow imports an API token from a host-controlled source:
 
 ```text
-OPENAI_API_KEY / `cri auth login openai-api`
+OPENAI_API_KEY / `cri auth login openai api-key`
 → Auth::Broker
 → CredentialStore
 → CredentialRef
@@ -78,12 +80,13 @@ The CLI commands are:
 
 ```text
 cri auth status
-cri auth login openai-api
-cri auth logout openai-api
+cri auth login openai api-key
+cri auth login openai chatgpt
+cri auth logout openai api-key
 ```
 
 The interactive token prompt disables terminal echo and does not put the token
-in command arguments or transcript output. For `openai-api/api-key`, the host
+in command arguments or transcript output. For `openai/api-key`, the host
 first performs a `GET /v1/models` validation request; a failed validation is
 not persisted. Extension-declared token flows are stored by the host but are
 not network-validated because their transport is extension-specific.

@@ -13,7 +13,7 @@ describe Cri::Host do
   it "registers providers with their auth flows through the host provider registry" do
     host = Cri::Host.new(auth: Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new))
 
-    openai = host.providers.find("openai-api").not_nil!
+    openai = host.providers.find("openai").not_nil!
     openai.transport.should eq("openai")
     openai.auth_flows.first.id.should eq("api-key")
     host.providers.register(Cri::ProviderRegistration.new(
