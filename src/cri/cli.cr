@@ -88,8 +88,12 @@ module Cri
         when Auth::FlowKind::ApiToken
           token = read_secret("#{provider.not_nil!.title} API token: ")
           abort("empty token") if token.empty?
-          ref = host.auth.import_api_token(provider_id, flow_id, token)
-          puts "saved #{provider_id}/#{flow_id} as #{ref.id}"
+          begin
+            ref = host.login_api_token(provider_id, flow_id, token)
+            puts "saved #{provider_id}/#{flow_id} as #{ref.id}"
+          rescue ex
+            abort("authentication failed: #{ex.message || ex.class.name}")
+          end
         else
           abort("#{provider_id}/#{flow_id} login transport is not implemented yet")
         end

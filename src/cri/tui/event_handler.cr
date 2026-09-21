@@ -197,7 +197,7 @@ module Cri
         end
 
         begin
-          ref = controller.host.auth.import_api_token(provider_id, flow_id, token)
+          ref = controller.host.login_api_token(provider_id, flow_id, token)
           ui.append_transcript("assistant: saved #{provider_id}/#{flow_id} as #{ref.id}\n", "assistant")
           ui.set_activity("authentication saved\n", "activity")
         rescue ex

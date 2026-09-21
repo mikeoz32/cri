@@ -66,7 +66,10 @@ cri auth logout openai-api
 ```
 
 The interactive token prompt disables terminal echo and does not put the token
-in command arguments or transcript output.
+in command arguments or transcript output. For `openai-api/api-key`, the host
+first performs a `GET /v1/models` validation request; a failed validation is
+not persisted. Extension-declared token flows are stored by the host but are
+not network-validated because their transport is extension-specific.
 
 The host owns a separate file store at `$XDG_CONFIG_HOME/cri/auth.json`
 (or `~/.config/cri/auth.json`). It uses a versioned cri-owned schema, a `0700`

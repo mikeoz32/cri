@@ -14,6 +14,26 @@ describe Cri::Providers::OpenAI do
     json["function"]["name"].as_s.should eq("demo.tool")
   end
 
+  it "validates an API key through the models endpoint" do
+    server = HTTP::Server.new do |context|
+      context.request.path.should eq("/v1/models")
+      context.request.headers["Authorization"].should eq("Bearer test-token")
+      context.response.status_code = 200
+      context.response.print(%({"data":[]}))
+    end
+    address = server.bind_tcp("127.0.0.1", 0)
+    spawn { server.listen }
+
+    client = Cri::Providers::OpenAIAPI::Client.new(
+      "http://127.0.0.1:#{address.port}/v1/chat/completions",
+      "test-token",
+      5.seconds
+    )
+    client.validate_api_key
+  ensure
+    server.try(&.close)
+  end
+
   it "parses completion and streaming responses through the local client" do
     server = HTTP::Server.new do |context|
       body = context.request.body.try(&.gets_to_end) || ""

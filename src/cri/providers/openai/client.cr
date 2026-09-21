@@ -21,6 +21,17 @@ module Cri
           JSON.parse(response)
         end
 
+        def validate_api_key : Nil
+          validation_endpoint = URI.parse(endpoint.to_s.sub(/\/chat\/completions\z/, "/models"))
+          client = HTTP::Client.new(validation_endpoint)
+          client.connect_timeout = timeout
+          client.read_timeout = timeout
+          response = client.get(validation_endpoint.request_target, headers: authorization_headers)
+          raise ApiError.new(response.status_code, response.body) unless response.success?
+        ensure
+          client.try(&.close)
+        end
+
         def chat_stream(payload : JSON::Any, &block : JSON::Any -> Nil) : Nil
           payload_hash = payload.as_h
           payload_hash["stream"] = JSON::Any.new(true)
@@ -71,9 +82,16 @@ module Cri
           client.try(&.close)
         end
 
-        private def request_headers : HTTP::Headers
-          headers = HTTP::Headers{"Content-Type" => "application/json", "Accept" => "text/event-stream"}
+        private def authorization_headers : HTTP::Headers
+          headers = HTTP::Headers{"Accept" => "application/json"}
           headers["Authorization"] = "Bearer #{@api_key}" if @api_key
+          headers
+        end
+
+        private def request_headers : HTTP::Headers
+          headers = authorization_headers
+          headers["Content-Type"] = "application/json"
+          headers["Accept"] = "text/event-stream"
           headers
         end
       end

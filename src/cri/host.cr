@@ -42,6 +42,22 @@ module Cri
       Providers::OpenAI.new(api_key: api_key)
     end
 
+    def login_api_token(provider_id : String, flow_id : String, secret : String) : Auth::CredentialRef
+      provider = auth.providers.find { |candidate| candidate.id == provider_id }
+      raise "unknown auth provider: #{provider_id}" unless provider
+      flow = provider.not_nil!.flows.find { |candidate| candidate.id == flow_id }
+      raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
+      raise "auth flow is not an API token flow" unless flow.not_nil!.kind == Auth::FlowKind::ApiToken
+
+      if provider_id == "openai-api" && flow_id == "api-key" && auth.store.persistent?
+        Providers::OpenAIAPI::Client.new(api_key: secret).validate_api_key
+      end
+
+      ref = auth.import_api_token(provider_id, flow_id, secret)
+      @openai_api_credential = ref if provider_id == "openai-api" && flow_id == "api-key"
+      ref
+    end
+
     def extension_command(name : String) : Extensions::Manifest?
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
     end
