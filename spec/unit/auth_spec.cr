@@ -37,6 +37,44 @@ describe Cri::Auth::Broker do
     store.persistent?.should be_false
   end
 
+  it "reports a missing Codex app-server executable without exposing credentials" do
+    expect_raises(Exception, /Codex executable not found/) do
+      Cri::Auth::CodexAppServer.new("/tmp/cri-codex-home-#{Process.pid}", "/tmp/cri-codex-does-not-exist").login_browser { |_| }
+    end
+  end
+
+  it "completes browser login through the official app-server protocol" do
+    root = "/tmp/cri-codex-protocol-#{Process.pid}-#{Random.rand(1_000_000)}"
+    script = File.join(root, "codex")
+    FileUtils.mkdir_p(root)
+    File.write(script, <<-SH)
+      #!/bin/sh
+      while IFS= read -r line; do
+        case "$line" in
+          *'"id":0'*) printf '%s\\n' '{"id":0,"result":{}}' ;;
+          *'"id":1'*) printf '%s\\n' '{"id":1,"result":{"loginId":"login-1","authUrl":"https://example.test/login"}}' ; printf '%s\\n' '{"method":"account/login/completed","params":{"loginId":"login-1","success":true}}' ;;
+        esac
+      done
+    SH
+    File.chmod(script, 0o700)
+    previous = ENV["CRI_NO_BROWSER"]?
+    ENV["CRI_NO_BROWSER"] = "1"
+    statuses = [] of String
+
+    result = Cri::Auth::CodexAppServer.new(File.join(root, "home"), script).login_browser { |status| statuses << status }
+
+    result.login_id.should eq("login-1")
+    result.auth_url.should eq("https://example.test/login")
+    statuses.should contain("waiting for ChatGPT login")
+  ensure
+    if previous
+      ENV["CRI_NO_BROWSER"] = previous
+    else
+      ENV.delete("CRI_NO_BROWSER")
+    end
+    FileUtils.rm_rf(root) if root
+  end
+
   it "persists only cri-owned credentials and reloads them" do
     root = "/tmp/cri-auth-store-#{Process.pid}-#{Random.rand(1_000_000)}"
     path = File.join(root, "auth.json")

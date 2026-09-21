@@ -58,6 +58,25 @@ module Cri
       ref
     end
 
+    def login_codex(flow_id : String, &on_status : String ->) : Auth::CredentialRef
+      provider = auth.providers.find { |candidate| candidate.id == "openai-codex" }
+      raise "unknown auth provider: openai-codex" unless provider
+      flow = provider.not_nil!.flows.find { |candidate| candidate.id == flow_id }
+      raise "unknown auth flow: openai-codex/#{flow_id}" unless flow
+      case flow.not_nil!.kind
+      when Auth::FlowKind::OAuthBrowser
+        result = Auth::CodexAppServer.new.login_browser { |status| on_status.call(status) }
+        auth.import_opaque("openai-codex", flow_id, "codex-home:#{result.home}")
+      else
+        raise "official Codex app-server does not expose this login flow yet"
+      end
+    end
+
+    def logout_auth(provider_id : String, flow_id : String)
+      auth.logout(provider_id, flow_id)
+      FileUtils.rm_rf(Auth::CodexAppServer.default_home) if provider_id == "openai-codex"
+    end
+
     def extension_command(name : String) : Extensions::Manifest?
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
     end
