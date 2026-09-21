@@ -62,19 +62,8 @@ The CLI commands are:
 ```text
 cri auth status
 cri auth login openai-api
-cri auth login openai-codex chatgpt
 cri auth logout openai-api
 ```
-
-The ChatGPT flow starts the official `codex app-server` subprocess with
-`CODEX_HOME` pointed at cri's own configuration area. cri sends only the
- documented app-server initialization and `account/login/start` requests; it
- does not implement OAuth or read an existing Codex home. The browser URL is
- shown to the user and the process waits for the official login-completed
- notification. If Codex is not installed, the command fails with an actionable
- message. The browser flow is currently supported; a device flow is rejected
- until the official app-server contract exposes it. `cri auth logout
- openai-codex` removes both the cri reference and cri's app-server home.
 
 The interactive token prompt disables terminal echo and does not put the token
 in command arguments or transcript output. For `openai-api/api-key`, the host

@@ -127,25 +127,6 @@ module Cri
 
         return true if raw.strip.empty?
 
-        if command_mode && begin_codex_auth(raw)
-          ui.append_transcript(": #{raw}\n", "command")
-          @history << raw
-          @history_index = @history.size
-          ui.input.clear
-          ui.end_command
-          ui.set_activity("starting official Codex login\n", "activity")
-          spawn do
-            begin
-              ref = controller.host.login_codex("chatgpt") { |status| ui.set_activity("#{status}\n", "activity") }
-              ui.append_transcript("assistant: saved openai-codex/chatgpt as #{ref.id}\n", "assistant")
-            rescue ex
-              ui.append_transcript("error: #{ex.message || ex.class.name}\n", "error")
-              ui.set_activity("Codex authentication failed\n", "activity")
-            end
-          end
-          return true
-        end
-
         if command_mode && begin_auth_prompt(raw)
           ui.append_transcript(": #{raw}\n", "command")
           @history << raw
@@ -191,11 +172,6 @@ module Cri
           command_mode ? ui.end_command : ui.end_insert
         end
         keep_running
-      end
-
-      private def begin_codex_auth(raw : String) : Bool
-        parts = raw.split
-        parts.size >= 3 && parts[0] == "auth" && parts[1] == "login" && parts[2] == "openai-codex" && (parts[3]?.nil? || parts[3] == "chatgpt")
       end
 
       private def begin_auth_prompt(raw : String) : Bool

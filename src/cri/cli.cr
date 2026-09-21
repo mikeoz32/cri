@@ -94,13 +94,6 @@ module Cri
           rescue ex
             abort("authentication failed: #{ex.message || ex.class.name}")
           end
-        when Auth::FlowKind::OAuthBrowser
-          begin
-            ref = host.login_codex(flow_id) { |status| STDERR.puts status }
-            puts "saved #{provider_id}/#{flow_id} as #{ref.id}"
-          rescue ex
-            abort("authentication failed: #{ex.message || ex.class.name}")
-          end
         else
           abort("#{provider_id}/#{flow_id} login transport is not implemented yet")
         end
@@ -109,7 +102,7 @@ module Cri
         provider = host.auth.providers.find { |candidate| candidate.id == provider_id }
         abort("unknown auth provider: #{provider_id}") unless provider
         flow_id = argv.shift? || provider.not_nil!.flows.first?.try(&.id) || abort("provider has no flows")
-        host.logout_auth(provider_id, flow_id)
+        host.auth.logout(provider_id, flow_id)
         puts "logged out #{provider_id}/#{flow_id}"
       else
         STDERR.puts "usage: cri auth status | login PROVIDER [FLOW] | logout PROVIDER [FLOW]"

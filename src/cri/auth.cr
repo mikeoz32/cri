@@ -274,13 +274,8 @@ module Cri
         raise "auth flow is not an API token flow" unless flow.kind.api_token?
         raise ArgumentError.new("credential token is empty") if token.empty?
 
-        import_opaque(provider_id, flow_id, token)
-      end
-
-      def import_opaque(provider_id : String, flow_id : String, value : String) : CredentialRef
-        provider(provider_id).flow(flow_id)
         ref = CredentialRef.new("cred-#{Random::Secure.hex(16)}", provider_id, flow_id)
-        store.save(Credential.new(ref, value))
+        store.save(Credential.new(ref, token))
         ref
       end
 
