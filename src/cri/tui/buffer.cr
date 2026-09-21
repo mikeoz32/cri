@@ -18,6 +18,7 @@ module Cri
       getter cursor : Int32
       getter cursor_revision : Int64
       getter mode : Mode
+      getter masked : Bool
       getter selection_anchor : Int32?
       @highlights = [] of Highlight
       @selection_anchor : Int32? = nil
@@ -80,9 +81,14 @@ module Cri
         content.chars[range.begin...range.end].join
       end
 
-      def initialize(id : String, @content : String = "", owner : String = "ui", persistent : Bool = false, @events : EventBus? = nil, @mode : Mode = Mode::Normal)
+      def initialize(id : String, @content : String = "", owner : String = "ui", persistent : Bool = false, @events : EventBus? = nil, @mode : Mode = Mode::Normal, @masked : Bool = false)
         super(id, "text", owner, persistent)
         @cursor = @content.size.to_i32
+      end
+
+      def masked=(value : Bool)
+        @masked = value
+        emit_change
       end
 
       def lines : Array(String)

@@ -198,7 +198,8 @@ module Cri
         return "" unless panel
         buffer = buffers.get(panel.buffer_id).as(TextBuffer)
         prompt = styled ? style(panel.prompt, current_mode.command? ? "command" : "accent") : panel.prompt
-        prompt + HighlightRenderer.line(buffer.content, 0, buffer.highlights, width - panel.prompt.size, styled ? @theme : nil)
+        content = buffer.masked ? "•" * buffer.content.chars.size : buffer.content
+        prompt + HighlightRenderer.line(content, 0, buffer.highlights, width - panel.prompt.size, styled ? @theme : nil)
       end
 
       private def style(value : String, group : String) : String

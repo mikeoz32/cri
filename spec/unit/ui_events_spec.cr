@@ -57,6 +57,27 @@ describe Cri::Tui::EventHandler do
     ui.mode.should eq(Cri::Tui::Mode::Normal)
     ui.transcript.content.should contain("session:")
   end
+
+  it "collects API tokens in a masked TUI prompt without transcript leakage" do
+    ui = Cri::Tui::UiRuntime.new
+    auth = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
+    host = Cri::Host.new(auth: auth)
+    controller = Cri::Tui::Controller.new(host, UiEventNoopProvider.new)
+    handler = Cri::Tui::EventHandler.new(ui, controller)
+
+    handler.handle(Cri::Tui::KeyEvent.character(":")) { }
+    "auth login openai-api".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
+    handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
+    ui.input.masked.should be_true
+    "secret-token".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
+    handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
+    sleep 10.milliseconds
+
+    auth.existing("openai-api", "api-key").should_not be_nil
+    ui.transcript.content.should_not contain("secret-token")
+    ui.input.content.should be_empty
+    ui.input.masked.should be_false
+  end
 end
 
 describe Cri::Tui::KeyDecoder do

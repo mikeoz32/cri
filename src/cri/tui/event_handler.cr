@@ -6,10 +6,13 @@ module Cri
       getter ui : UiRuntime
       getter controller : Controller
 
+      @auth_prompt : {String, String}?
+
       def initialize(@ui : UiRuntime, @controller : Controller)
         @history = [] of String
         @history_index = 0
         @submission_running = false
+        @auth_prompt = nil
       end
 
       def handle(event : KeyEvent, &refresh : -> Nil) : Bool
@@ -33,10 +36,18 @@ module Cri
         when "mode.visual"
           ui.begin_visual || ui.set_activity("no focused buffer\n", "activity")
         when "mode.normal"
-          ui.end_insert
+          if @auth_prompt
+            cancel_auth_prompt
+          else
+            ui.end_insert
+          end
         when "mode.normal_clear"
-          ui.input.clear
-          ui.end_command
+          if @auth_prompt
+            cancel_auth_prompt
+          else
+            ui.input.clear
+            ui.end_command
+          end
         when "input.insert"
           ui.focused_buffer.try { |buffer| buffer.insert(event.value || "") }
         when "input.backspace"
@@ -109,7 +120,24 @@ module Cri
 
       private def submit_now(command_mode : Bool, refresh : Proc(Nil)) : Bool
         raw = ui.input.content
+
+        if @auth_prompt
+          return finish_auth_prompt(raw)
+        end
+
         return true if raw.strip.empty?
+
+        if command_mode && begin_auth_prompt(raw)
+          ui.append_transcript(": #{raw}\n", "command")
+          @history << raw
+          @history_index = @history.size
+          ui.input.clear
+          ui.input.mode = Mode::Insert
+          ui.input.masked = true
+          ui.input_panel.prompt = "token: "
+          ui.set_activity("enter token, Escape cancels\n", "activity")
+          return true
+        end
 
         command = command_mode ? "/#{raw}" : raw.strip
         ui.append_transcript(command_mode ? ": #{raw}\n" : "> #{raw}\n", command_mode ? "command" : "user")
@@ -144,6 +172,55 @@ module Cri
           command_mode ? ui.end_command : ui.end_insert
         end
         keep_running
+      end
+
+      private def begin_auth_prompt(raw : String) : Bool
+        parts = raw.split
+        return false unless parts.size >= 3 && parts[0] == "auth" && parts[1] == "login"
+
+        provider_id = parts[2]
+        provider = controller.host.auth.providers.find { |candidate| candidate.id == provider_id }
+        return false unless provider
+        flow_id = parts[3]? || provider.flows.first?.try(&.id)
+        flow = flow_id && provider.flows.find { |candidate| candidate.id == flow_id }
+        return false unless flow && flow.not_nil!.kind == Auth::FlowKind::ApiToken
+
+        @auth_prompt = {provider_id, flow.not_nil!.id}
+        true
+      end
+
+      private def finish_auth_prompt(token : String) : Bool
+        provider_id, flow_id = @auth_prompt.not_nil!
+        if token.empty?
+          ui.set_activity("empty token; try again or Escape to cancel\n", "activity")
+          return true
+        end
+
+        begin
+          ref = controller.host.auth.import_api_token(provider_id, flow_id, token)
+          ui.append_transcript("assistant: saved #{provider_id}/#{flow_id} as #{ref.id}\n", "assistant")
+          ui.set_activity("authentication saved\n", "activity")
+        rescue ex
+          ui.append_transcript("error: #{ex.message || ex.class.name}\n", "error")
+          ui.set_activity("authentication failed\n", "activity")
+        ensure
+          clear_auth_prompt
+        end
+        true
+      end
+
+      private def cancel_auth_prompt
+        ui.input.clear
+        clear_auth_prompt
+        ui.set_activity("authentication cancelled\n", "activity")
+      end
+
+      private def clear_auth_prompt
+        @auth_prompt = nil
+        ui.input.clear
+        ui.input.masked = false
+        ui.input_panel.prompt = "> "
+        ui.end_command
       end
 
       private def history_up

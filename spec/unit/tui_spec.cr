@@ -30,4 +30,13 @@ describe Cri::Tui::UiRuntime do
 
     sources.should contain("input")
   end
+
+  it "marks secret input without changing its stored value" do
+    ui = Cri::Tui::UiRuntime.new
+    ui.input.masked = true
+    ui.input.insert("secret-token")
+
+    ui.input.masked.should be_true
+    ui.input.content.should eq("secret-token")
+  end
 end
