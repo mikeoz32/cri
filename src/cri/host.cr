@@ -11,6 +11,7 @@ module Cri
     getter commands : CommandRegistry
     getter capabilities : API::CapabilityBroker
     getter auth : Auth::Broker
+    getter providers : ProviderRegistry
     getter openai_api_credential : Auth::CredentialRef?
 
     def initialize(
@@ -20,6 +21,7 @@ module Cri
       @auth : Auth::Broker = Auth::Broker.new,
     )
       @extensions = Extensions::Registry.new(config.extension_dirs).discover
+      @providers = ProviderRegistry.new(auth)
       @builtins = ToolRegistry.new
       @builtins.register_builtins
       @builtins.register(ReadFileTool.new(config.cwd))
@@ -43,18 +45,18 @@ module Cri
     end
 
     def login_api_token(provider_id : String, flow_id : String, secret : String) : Auth::CredentialRef
-      provider = auth.providers.find { |candidate| candidate.id == provider_id }
+      provider = providers.find(provider_id)
       raise "unknown auth provider: #{provider_id}" unless provider
-      flow = provider.not_nil!.flows.find { |candidate| candidate.id == flow_id }
+      flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
       raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
       raise "auth flow is not an API token flow" unless flow.not_nil!.kind == Auth::FlowKind::ApiToken
 
-      if provider_id == "openai-api" && flow_id == "api-key" && auth.store.persistent?
+      if flow.not_nil!.metadata["validator"]? == "openai-models" && auth.store.persistent?
         Providers::OpenAIAPI::Client.new(api_key: secret).validate_api_key
       end
 
       ref = auth.import_api_token(provider_id, flow_id, secret)
-      @openai_api_credential = ref if provider_id == "openai-api" && flow_id == "api-key"
+      @openai_api_credential = ref if provider.not_nil!.transport == "openai"
       ref
     end
 
@@ -63,14 +65,16 @@ module Cri
     end
 
     private def register_auth_providers
-      auth.register(Auth::Provider.new(
+      providers.register(ProviderRegistration.new(
         "openai-api",
         "OpenAI API",
-        [Auth::Flow.new("api-key", Auth::FlowKind::ApiToken)]
+        "openai",
+        [Auth::Flow.new("api-key", Auth::FlowKind::ApiToken, {"validator" => "openai-models"})]
       ))
-      auth.register(Auth::Provider.new(
+      providers.register(ProviderRegistration.new(
         "openai-codex",
         "ChatGPT / Codex",
+        "codex-app-server",
         [
           Auth::Flow.new("chatgpt", Auth::FlowKind::OAuthBrowser, {"transport" => "codex-app-server"}),
           Auth::Flow.new("device", Auth::FlowKind::OAuthDevice, {"transport" => "codex-app-server"}),
@@ -89,9 +93,10 @@ module Cri
                    end
             Auth::Flow.new(flow.id, kind, flow.metadata)
           end
-          auth.register(Auth::Provider.new(
+          providers.register(ProviderRegistration.new(
             provider_id,
             declaration.title,
+            "extension/#{manifest.name}",
             flows,
             "extension:#{manifest.name}"
           ))

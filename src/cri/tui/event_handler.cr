@@ -179,10 +179,10 @@ module Cri
         return false unless parts.size >= 3 && parts[0] == "auth" && parts[1] == "login"
 
         provider_id = parts[2]
-        provider = controller.host.auth.providers.find { |candidate| candidate.id == provider_id }
+        provider = controller.host.providers.find(provider_id)
         return false unless provider
-        flow_id = parts[3]? || provider.flows.first?.try(&.id)
-        flow = flow_id && provider.flows.find { |candidate| candidate.id == flow_id }
+        flow_id = parts[3]? || provider.auth_flows.first?.try(&.id)
+        flow = flow_id && provider.auth_flows.find { |candidate| candidate.id == flow_id }
         return false unless flow && flow.not_nil!.kind == Auth::FlowKind::ApiToken
 
         @auth_prompt = {provider_id, flow.not_nil!.id}

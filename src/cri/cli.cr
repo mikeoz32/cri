@@ -70,19 +70,19 @@ module Cri
       sub = argv.shift? || "status"
       case sub
       when "status", "providers"
-        host.auth.providers.each do |provider|
+        host.providers.all.each do |provider|
           puts "#{provider.title} (#{provider.source})"
-          provider.flows.each do |flow|
+          provider.auth_flows.each do |flow|
             state = host.auth.existing(provider.id, flow.id) ? "configured" : "not configured"
             puts "  #{flow.id}: #{state}"
           end
         end
       when "login"
         provider_id = argv.shift? || abort("missing auth provider")
-        provider = host.auth.providers.find { |candidate| candidate.id == provider_id }
+        provider = host.providers.find(provider_id)
         abort("unknown auth provider: #{provider_id}") unless provider
-        flow_id = argv.shift? || provider.not_nil!.flows.first?.try(&.id) || abort("provider has no flows")
-        flow = provider.not_nil!.flows.find { |candidate| candidate.id == flow_id }
+        flow_id = argv.shift? || provider.not_nil!.auth_flows.first?.try(&.id) || abort("provider has no flows")
+        flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
         abort("unknown auth flow: #{provider_id}/#{flow_id}") unless flow
         case flow.not_nil!.kind
         when Auth::FlowKind::ApiToken
@@ -99,9 +99,9 @@ module Cri
         end
       when "logout"
         provider_id = argv.shift? || abort("missing auth provider")
-        provider = host.auth.providers.find { |candidate| candidate.id == provider_id }
+        provider = host.providers.find(provider_id)
         abort("unknown auth provider: #{provider_id}") unless provider
-        flow_id = argv.shift? || provider.not_nil!.flows.first?.try(&.id) || abort("provider has no flows")
+        flow_id = argv.shift? || provider.not_nil!.auth_flows.first?.try(&.id) || abort("provider has no flows")
         host.auth.logout(provider_id, flow_id)
         puts "logged out #{provider_id}/#{flow_id}"
       else

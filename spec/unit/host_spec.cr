@@ -9,4 +9,13 @@ describe Cri::Host do
     host.commands.names.should contain("fixture:run")
     host.extension_command("fixture:run").not_nil!.name.should eq("fixture")
   end
+
+  it "registers providers with their auth flows through the host provider registry" do
+    host = Cri::Host.new(auth: Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new))
+
+    openai = host.providers.find("openai-api").not_nil!
+    openai.transport.should eq("openai")
+    openai.auth_flows.first.id.should eq("api-key")
+    host.providers.find("extension/fixture/example").not_nil!.source.should eq("extension:fixture")
+  end
 end

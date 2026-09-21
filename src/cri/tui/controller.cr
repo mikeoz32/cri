@@ -64,9 +64,9 @@ module Cri
         return "usage: /auth [status|providers]" unless args.empty? || args == "status" || args == "providers"
 
         lines = ["Authentication providers:"]
-        host.auth.providers.each do |provider|
+        host.providers.all.each do |provider|
           lines << "#{provider.title} (#{provider.source})"
-          provider.flows.each do |flow|
+          provider.auth_flows.each do |flow|
             configured = host.auth.existing(provider.id, flow.id) ? "configured" : "not configured"
             lines << "  #{flow.id}: #{configured}"
           end
