@@ -1,0 +1,17 @@
+name = "effect_fixture"
+version = "0.1.0"
+abi = "cri.extension.v1"
+wasm = "plugin.wasm"
+
+[permissions]
+network = ["https://example.com"]
+secrets = []
+filesystem_read = []
+filesystem_write = []
+shell = false
+model = false
+
+[[tools]]
+name = "effect_fixture.request"
+description = "Returns an HTTP effect, then resumes"
+entrypoint = "cri_call"

@@ -1,0 +1,19 @@
+name = "zig_fetch"
+version = "0.1.0"
+abi = "cri.extension.v1"
+sdk = "zig"
+sdk_version = "0.1"
+wasm = "plugin.wasm"
+
+[permissions]
+network = ["https://api.github.com"]
+secrets = ["GITHUB_TOKEN"]
+filesystem_read = []
+filesystem_write = []
+shell = false
+model = false
+
+[[tools]]
+name = "zig.fetch"
+description = "Fetch a GitHub issue through a host-mediated HTTP effect"
+entrypoint = "cri_call"

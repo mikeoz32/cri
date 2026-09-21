@@ -1,0 +1,28 @@
+# Crystal build artifacts
+/.crystal/
+/bin/cri
+/lib/
+*.o
+*.a
+*.so
+*.dylib
+*.dSYM/
+
+# Runtime/build output
+/tmp/
+*.log
+coverage/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*
+*secrets*
+
+# Editor/OS files
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,27 @@
+name = "fixture"
+version = "0.1.0"
+abi = "cri.extension.v1"
+wasm = "plugin.wasm"
+
+[permissions]
+network = []
+secrets = []
+filesystem_read = []
+filesystem_write = []
+shell = false
+model = false
+
+[[tools]]
+name = "fixture.echo"
+description = "Minimal wasm3 ABI fixture"
+entrypoint = "cri_call"
+
+[[commands]]
+name = "fixture:run"
+title = "Run fixture"
+entrypoint = "cri_call"
+
+[[ui.actions]]
+name = "fixture.notify"
+title = "Show fixture notification"
+entrypoint = "cri_call"

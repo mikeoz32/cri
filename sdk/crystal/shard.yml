@@ -1,0 +1,13 @@
+name: cri_extension_sdk
+version: 0.1.0
+
+crystal: '>= 1.8.0'
+
+license: MIT
+
+authors:
+  - cri contributors
+
+targets:
+  extension_example:
+    main: examples/hello.cr
