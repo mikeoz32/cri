@@ -299,6 +299,10 @@ module Cri
       def remove(ref : CredentialRef)
         store.delete(ref)
       end
+
+      def logout(provider_id : String, flow_id : String)
+        store.find(provider_id, flow_id).try { |ref| store.delete(ref) }
+      end
     end
   end
 end

@@ -50,12 +50,23 @@ provider/transport adapter.
 The first implemented flow imports an API token from a host-controlled source:
 
 ```text
-OPENAI_API_KEY / explicit host input
+OPENAI_API_KEY / `cri auth login openai-api`
 → Auth::Broker
 → CredentialStore
 → CredentialRef
 → OpenAI host provider
 ```
+
+The CLI commands are:
+
+```text
+cri auth status
+cri auth login openai-api
+cri auth logout openai-api
+```
+
+The interactive token prompt disables terminal echo and does not put the token
+in command arguments or transcript output.
 
 The host owns a separate file store at `$XDG_CONFIG_HOME/cri/auth.json`
 (or `~/.config/cri/auth.json`). It uses a versioned cri-owned schema, a `0700`

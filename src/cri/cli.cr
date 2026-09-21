@@ -22,6 +22,8 @@ module Cri
         doctor
       when "extensions"
         extensions(argv)
+      when "auth"
+        auth(argv)
       when "plugin"
         plugin(argv)
       when "tool"
@@ -47,6 +49,9 @@ module Cri
         cri extensions list
         cri extensions show NAME
         cri extensions invoke NAME KIND CONTRIBUTION JSON
+        cri auth status
+        cri auth login PROVIDER [FLOW]
+        cri auth logout PROVIDER [FLOW]
         cri plugin init --lang zig NAME [DIR]
         cri plugin check DIR
         cri plugin build DIR
@@ -59,6 +64,63 @@ module Cri
         cri chat
         cri tui
       TEXT
+    end
+
+    private def auth(argv : Array(String))
+      sub = argv.shift? || "status"
+      case sub
+      when "status", "providers"
+        host.auth.providers.each do |provider|
+          puts "#{provider.title} (#{provider.source})"
+          provider.flows.each do |flow|
+            state = host.auth.existing(provider.id, flow.id) ? "configured" : "not configured"
+            puts "  #{flow.id}: #{state}"
+          end
+        end
+      when "login"
+        provider_id = argv.shift? || abort("missing auth provider")
+        provider = host.auth.providers.find { |candidate| candidate.id == provider_id }
+        abort("unknown auth provider: #{provider_id}") unless provider
+        flow_id = argv.shift? || provider.not_nil!.flows.first?.try(&.id) || abort("provider has no flows")
+        flow = provider.not_nil!.flows.find { |candidate| candidate.id == flow_id }
+        abort("unknown auth flow: #{provider_id}/#{flow_id}") unless flow
+        case flow.not_nil!.kind
+        when Auth::FlowKind::ApiToken
+          token = read_secret("#{provider.not_nil!.title} API token: ")
+          abort("empty token") if token.empty?
+          ref = host.auth.import_api_token(provider_id, flow_id, token)
+          puts "saved #{provider_id}/#{flow_id} as #{ref.id}"
+        else
+          abort("#{provider_id}/#{flow_id} login transport is not implemented yet")
+        end
+      when "logout"
+        provider_id = argv.shift? || abort("missing auth provider")
+        provider = host.auth.providers.find { |candidate| candidate.id == provider_id }
+        abort("unknown auth provider: #{provider_id}") unless provider
+        flow_id = argv.shift? || provider.not_nil!.flows.first?.try(&.id) || abort("provider has no flows")
+        host.auth.logout(provider_id, flow_id)
+        puts "logged out #{provider_id}/#{flow_id}"
+      else
+        STDERR.puts "usage: cri auth status | login PROVIDER [FLOW] | logout PROVIDER [FLOW]"
+        exit 1
+      end
+    end
+
+    private def read_secret(prompt : String) : String
+      STDERR.print(prompt)
+      output = IO::Memory.new
+      status = Process.run("stty", args: ["-g"], input: Process::Redirect::Inherit, output: output, error: Process::Redirect::Close)
+      if status.success?
+        state = output.to_s.strip
+        Process.run("stty", args: ["-echo"], input: Process::Redirect::Inherit, output: Process::Redirect::Close)
+        begin
+          return STDIN.gets.to_s.chomp
+        ensure
+          Process.run("stty", args: [state], input: Process::Redirect::Inherit, output: Process::Redirect::Close)
+          STDERR.puts
+        end
+      end
+      STDIN.gets.to_s.chomp
     end
 
     private def doctor

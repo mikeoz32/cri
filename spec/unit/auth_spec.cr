@@ -2,7 +2,7 @@ require "../spec_helper"
 
 describe Cri::Auth::Broker do
   it "registers OpenAI API and Codex flow configuration" do
-    broker = Cri::Auth::Broker.new
+    broker = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
     broker.register(Cri::Auth::Provider.new(
       "openai-api",
       "OpenAI API",
@@ -19,7 +19,7 @@ describe Cri::Auth::Broker do
   end
 
   it "keeps API tokens behind an opaque credential reference" do
-    broker = Cri::Auth::Broker.new
+    broker = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
     broker.register(Cri::Auth::Provider.new(
       "openai-api",
       "OpenAI API",
@@ -59,7 +59,7 @@ describe Cri::Auth::Broker do
   end
 
   it "rejects API tokens for non-token flows" do
-    broker = Cri::Auth::Broker.new
+    broker = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
     broker.register(Cri::Auth::Provider.new(
       "openai-codex",
       "ChatGPT / Codex",
