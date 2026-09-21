@@ -24,7 +24,8 @@
 - package install перевіряє compressed size та SHA-256 до/після extraction, щоб виявляти package replacement під час install;
 - WASM cancellation не виділяється окремо: runtime має використовувати спільний execution/cancellation механізм host;
 - додано мінімальний deny-by-default `CapabilityBroker` з fiber-aware `PendingApproval`, event-backed allow/deny і gate для effects та Host ToolRouter; model/provider capability не експонується;
-- додано host-owned `Auth::Broker` з OpenAI API-token flow, opaque `CredentialRef` і декларативною конфігурацією Codex ChatGPT flows.
+- додано host-owned `Auth::Broker` з OpenAI API-token flow, opaque `CredentialRef` і декларативною конфігурацією Codex ChatGPT flows;
+- додано власний versioned `$XDG_CONFIG_HOME/cri/auth.json` store з `0700/0600`, lock-файлом і atomic writes; pi/Codex credential files не імпортуються.
 
 Цей документ зберігає baseline review; findings нижче не видаляються після виправлення, щоб залишалася audit history.
 

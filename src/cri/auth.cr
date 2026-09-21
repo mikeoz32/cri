@@ -1,3 +1,4 @@
+require "json"
 require "random/secure"
 
 module Cri
@@ -57,16 +58,16 @@ module Cri
 
     abstract class CredentialStore
       def self.default : CredentialStore
-        if SecretServiceCredentialStore.available?
-          SecretServiceCredentialStore.new
-        else
-          MemoryCredentialStore.new
-        end
+        FileCredentialStore.new
       end
 
       abstract def save(credential : Credential)
       abstract def get(ref : CredentialRef) : Credential?
       abstract def delete(ref : CredentialRef)
+
+      def find(provider_id : String, flow_id : String) : CredentialRef?
+        nil
+      end
 
       def persistent? : Bool
         false
@@ -86,6 +87,123 @@ module Cri
 
       def delete(ref : CredentialRef)
         @credentials.delete(ref.id)
+      end
+
+      def find(provider_id : String, flow_id : String) : CredentialRef?
+        @credentials.values.find { |credential| credential.ref.provider_id == provider_id && credential.ref.flow_id == flow_id }.try(&.ref)
+      end
+    end
+
+    class FileCredentialStore < CredentialStore
+      VERSION = 1
+
+      getter path : String
+
+      def self.default_path : String
+        home = ENV["HOME"]? || "."
+        config_home = ENV["XDG_CONFIG_HOME"]? || File.join(home, ".config")
+        File.join(config_home, "cri", "auth.json")
+      end
+
+      def initialize(@path : String = self.class.default_path)
+        ensure_directory
+      end
+
+      def save(credential : Credential)
+        with_lock do |records|
+          records[credential.ref.id] = record_for(credential)
+          write_records(records)
+        end
+      end
+
+      def get(ref : CredentialRef) : Credential?
+        with_lock(shared: true) do |records|
+          record = records[ref.id]?
+          record_to_credential(ref, record)
+        end
+      end
+
+      def delete(ref : CredentialRef)
+        with_lock do |records|
+          records.delete(ref.id)
+          write_records(records)
+        end
+      end
+
+      def find(provider_id : String, flow_id : String) : CredentialRef?
+        with_lock(shared: true) do |records|
+          records.each do |id, record|
+            next unless record["provider"]?.try(&.as_s?) == provider_id
+            next unless record["flow"]?.try(&.as_s?) == flow_id
+            return CredentialRef.new(id, provider_id, flow_id)
+          end
+          nil
+        end
+      end
+
+      def persistent? : Bool
+        true
+      end
+
+      private def ensure_directory
+        directory = File.dirname(path)
+        Dir.mkdir_p(directory)
+        File.chmod(directory, 0o700)
+        File.chmod(path, 0o600) if File.exists?(path)
+      end
+
+      private def lock_path : String
+        "#{path}.lock"
+      end
+
+      private def with_lock(shared : Bool = false, & : Hash(String, JSON::Any) -> _)
+        File.open(lock_path, "a+") do |lock|
+          lock.chmod(0o600)
+          shared ? lock.flock_shared : lock.flock_exclusive
+          begin
+            yield read_records
+          ensure
+            lock.flock_unlock
+          end
+        end
+      end
+
+      private def read_records : Hash(String, JSON::Any)
+        return {} of String => JSON::Any unless File.exists?(path)
+        root = JSON.parse(File.read(path)).as_h
+        version = root["version"]?.try(&.as_i?)
+        raise "unsupported cri auth store version" unless version == VERSION
+        root["credentials"]?.try(&.as_h) || {} of String => JSON::Any
+      end
+
+      private def record_for(credential : Credential) : JSON::Any
+        JSON.parse({
+          "provider" => credential.ref.provider_id,
+          "flow"     => credential.ref.flow_id,
+          "secret"   => credential.secret,
+        }.to_json)
+      end
+
+      private def record_to_credential(ref : CredentialRef, record : JSON::Any?) : Credential?
+        return nil unless record
+        hash = record.as_h
+        secret = hash["secret"]?.try(&.as_s?)
+        secret ? Credential.new(ref, secret) : nil
+      end
+
+      private def write_records(records : Hash(String, JSON::Any))
+        temporary = "#{path}.tmp-#{Process.pid}-#{Random::Secure.hex(6)}"
+        begin
+          File.open(temporary, "w", perm: 0o600) do |file|
+            file.print({"version" => VERSION, "credentials" => records}.to_json)
+            file.flush
+            file.fsync
+          end
+          File.rename(temporary, path)
+          File.chmod(path, 0o600)
+        ensure
+          File.delete(temporary) if File.exists?(temporary)
+        end
       end
     end
 
@@ -162,8 +280,13 @@ module Cri
 
       def import_env(provider_id : String, flow_id : String, env_name : String) : CredentialRef?
         token = ENV[env_name]?
-        return nil unless token && !token.empty?
+        return existing(provider_id, flow_id) unless token && !token.empty?
         import_api_token(provider_id, flow_id, token)
+      end
+
+      def existing(provider_id : String, flow_id : String) : CredentialRef?
+        provider(provider_id).flow(flow_id)
+        store.find(provider_id, flow_id)
       end
 
       # This is intentionally a host-side operation. Do not pass Broker or

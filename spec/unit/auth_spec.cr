@@ -37,6 +37,27 @@ describe Cri::Auth::Broker do
     store.persistent?.should be_false
   end
 
+  it "persists only cri-owned credentials and reloads them" do
+    root = "/tmp/cri-auth-store-#{Process.pid}-#{Random.rand(1_000_000)}"
+    path = File.join(root, "auth.json")
+    begin
+      store = Cri::Auth::FileCredentialStore.new(path)
+      ref = Cri::Auth::CredentialRef.new("cred-test", "openai-api", "api-key")
+      store.save(Cri::Auth::Credential.new(ref, "secret-token"))
+
+      reloaded = Cri::Auth::FileCredentialStore.new(path)
+      reloaded.get(ref).not_nil!.secret.should eq("secret-token")
+      reloaded.find("openai-api", "api-key").not_nil!.id.should eq("cred-test")
+      File.info(path).permissions.value.should eq(0o600)
+      File.exists?("#{path}.tmp").should be_false
+
+      reloaded.delete(ref)
+      reloaded.get(ref).should be_nil
+    ensure
+      FileUtils.rm_rf(root)
+    end
+  end
+
   it "rejects API tokens for non-token flows" do
     broker = Cri::Auth::Broker.new
     broker.register(Cri::Auth::Provider.new(

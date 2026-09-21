@@ -40,11 +40,16 @@ OPENAI_API_KEY / explicit host input
 → OpenAI host provider
 ```
 
-On Linux the host uses the Secret Service backend when `secret-tool` and a
-DBus session are available. In headless/dev environments without Secret
-Service it explicitly falls back to process memory; that fallback is not
-persistent and is not a secure durable credential store. Durable persistence
-must use an OS keyring backend.
+The host owns a separate file store at `$XDG_CONFIG_HOME/cri/auth.json`
+(or `~/.config/cri/auth.json`). It uses a versioned cri-owned schema, a `0700`
+configuration directory, a `0600` file, a lock file, and atomic same-directory
+replacement. It never reads pi/Codex auth files.
+
+On Linux, the optional Secret Service backend can be selected when
+`secret-tool` and a DBus session are available. In headless/dev environments
+without Secret Service, the file store remains the default cri-owned durable
+backend; a process-memory store is available explicitly for tests/ephemeral
+hosts.
 
 ## Async flows
 
