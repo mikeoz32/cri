@@ -16,6 +16,29 @@ describe Cri::Host do
     openai = host.providers.find("openai-api").not_nil!
     openai.transport.should eq("openai")
     openai.auth_flows.first.id.should eq("api-key")
+    host.providers.register(Cri::ProviderRegistration.new(
+      "extension/fixture/example",
+      "Example Service",
+      "extension/fixture",
+      [Cri::Auth::Flow.new("token", Cri::Auth::FlowKind::ApiToken)],
+      "extension:fixture"
+    ))
     host.providers.find("extension/fixture/example").not_nil!.source.should eq("extension:fixture")
+  end
+
+  it "registers provider definitions returned by an extension init hook" do
+    host = Cri::Host.new(auth: Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new))
+    effect = JSON.parse({
+      "type"       => "host.provider.register",
+      "id"         => "example",
+      "title"      => "Example Service",
+      "transport"  => "example",
+      "auth_flows" => [{"id" => "token", "kind" => "api_token"}],
+    }.to_json)
+
+    host.providers.register_extension_effect(effect, "fixture")
+
+    provider = host.providers.find("extension/fixture/example").not_nil!
+    provider.auth_flows.first.kind.should eq(Cri::Auth::FlowKind::ApiToken)
   end
 end

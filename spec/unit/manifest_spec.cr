@@ -9,9 +9,6 @@ describe Cri::Extensions::Manifest do
     manifest.commands.first.name.should eq("fixture:run")
     manifest.ui_actions.size.should eq(1)
     manifest.ui_actions.first.name.should eq("fixture.notify")
-    manifest.auth_providers.size.should eq(1)
-    manifest.auth_providers.first.id.should eq("example")
-    manifest.auth_providers.first.flows.first.kind.should eq("api_token")
 
     github = Cri::Extensions::Manifest.load("examples/extensions/github_issue/extension.toml")
     github.valid?.should be_false

@@ -1,5 +1,3 @@
-require "set"
-
 module Cri
   module Extensions
     class Contribution
@@ -14,18 +12,6 @@ module Cri
 
       def initialize(@kind : String, @name : String, @title : String? = nil, @description : String? = nil, @event : String? = nil, @entrypoint : String = "cri_call")
       end
-    end
-
-    class AuthFlowDeclaration
-      property id : String = ""
-      property kind : String = ""
-      property metadata = {} of String => String
-    end
-
-    class AuthProviderDeclaration
-      property id : String = ""
-      property title : String = ""
-      property flows = [] of AuthFlowDeclaration
     end
 
     class Manifest
@@ -44,7 +30,6 @@ module Cri
       property ui_status_items = [] of Contribution
       property ui_panels = [] of Contribution
       property ui_actions = [] of Contribution
-      property auth_providers = [] of AuthProviderDeclaration
       property errors = [] of String
 
       def initialize(@root_dir : String)
@@ -72,8 +57,6 @@ module Cri
       protected def parse(source : String)
         section = "root"
         current : Contribution? = nil
-        current_auth_provider : AuthProviderDeclaration? = nil
-        current_auth_flow : AuthFlowDeclaration? = nil
 
         source.each_line do |raw|
           line = raw.strip
@@ -83,73 +66,39 @@ module Cri
           when "[permissions]"
             section = "permissions"
             current = nil
-            current_auth_provider = nil
-            current_auth_flow = nil
-            next
-          when "[[auth.providers]]"
-            section = "auth.providers"
-            current = nil
-            current_auth_flow = nil
-            current_auth_provider = AuthProviderDeclaration.new
-            auth_providers << current_auth_provider.not_nil!
-            next
-          when "[[auth.providers.flows]]"
-            section = "auth.providers.flows"
-            current = nil
-            provider = current_auth_provider
-            unless provider
-              errors << "auth flow must follow an auth provider"
-              next
-            end
-            current_auth_flow = AuthFlowDeclaration.new
-            provider.flows << current_auth_flow.not_nil!
             next
           when "[[tools]]"
             section = "tools"
-            current_auth_provider = nil
-            current_auth_flow = nil
             current = Contribution.new("tool", "")
             tools << current.not_nil!
             next
           when "[[commands]]"
             section = "commands"
-            current_auth_provider = nil
-            current_auth_flow = nil
             current = Contribution.new("command", "")
             commands << current.not_nil!
             next
           when "[[hooks]]"
             section = "hooks"
-            current_auth_provider = nil
-            current_auth_flow = nil
             current = Contribution.new("hook", "")
             hooks << current.not_nil!
             next
           when "[[context_providers]]"
             section = "context"
-            current_auth_provider = nil
-            current_auth_flow = nil
             current = Contribution.new("context", "")
             context_providers << current.not_nil!
             next
           when "[[ui.status_items]]"
             section = "ui.status_items"
-            current_auth_provider = nil
-            current_auth_flow = nil
             current = Contribution.new("ui.status_item", "")
             ui_status_items << current.not_nil!
             next
           when "[[ui.panels]]"
             section = "ui.panels"
-            current_auth_provider = nil
-            current_auth_flow = nil
             current = Contribution.new("ui.panel", "")
             ui_panels << current.not_nil!
             next
           when "[[ui.actions]]"
             section = "ui.actions"
-            current_auth_provider = nil
-            current_auth_flow = nil
             current = Contribution.new("ui.action", "")
             ui_actions << current.not_nil!
             next
@@ -171,10 +120,6 @@ module Cri
             assign_root(key, value)
           when "permissions"
             assign_permission(key, value)
-          when "auth.providers"
-            assign_auth_provider(current_auth_provider, key, value)
-          when "auth.providers.flows"
-            assign_auth_flow(current_auth_flow, key, value)
           else
             assign_contribution(current, key, value)
           end
@@ -206,23 +151,6 @@ module Cri
         when "filesystem_write" then permissions.filesystem_write = array(value)
         when "shell"            then permissions.shell = boolean(value)
         when "model"            then permissions.model = boolean(value)
-        end
-      end
-
-      private def assign_auth_provider(provider : AuthProviderDeclaration?, key : String, value : String)
-        return unless p = provider
-        case key
-        when "id", "name" then p.id = scalar(value)
-        when "title"      then p.title = scalar(value)
-        end
-      end
-
-      private def assign_auth_flow(flow : AuthFlowDeclaration?, key : String, value : String)
-        return unless f = flow
-        case key
-        when "id"   then f.id = scalar(value)
-        when "kind" then f.kind = scalar(value)
-        else             f.metadata[key] = scalar(value)
         end
       end
 
@@ -261,8 +189,6 @@ module Cri
           errors << "#{c.kind} name/id/event is required" if c.name.empty?
         end
 
-        validate_auth_providers
-
         if executable?
           errors << "wasm is required for executable contributions" if wasm.nil? || wasm.try(&.empty?)
         end
@@ -273,27 +199,6 @@ module Cri
             errors << "wasm path must stay inside extension directory"
           end
           errors << "wasm file not found: #{path}" if require_wasm && !File.file?(path)
-        end
-      end
-
-      private def validate_auth_providers
-        provider_ids = Set(String).new
-        auth_providers.each do |provider|
-          errors << "auth provider id is required" if provider.id.empty?
-          errors << "duplicate auth provider: #{provider.id}" if provider_ids.includes?(provider.id)
-          provider_ids.add(provider.id)
-          errors << "auth provider title is required: #{provider.id}" if provider.title.empty?
-
-          flow_ids = Set(String).new
-          provider.flows.each do |flow|
-            errors << "auth flow id is required: #{provider.id}" if flow.id.empty?
-            errors << "duplicate auth flow: #{provider.id}/#{flow.id}" if flow_ids.includes?(flow.id)
-            flow_ids.add(flow.id)
-            unless {"api_token", "oauth_device", "oauth_browser"}.includes?(flow.kind)
-              errors << "unsupported auth flow kind: #{provider.id}/#{flow.id}"
-            end
-          end
-          errors << "auth provider must declare a flow: #{provider.id}" if provider.flows.empty?
         end
       end
 

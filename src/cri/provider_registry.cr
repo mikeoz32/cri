@@ -1,3 +1,5 @@
+require "json"
+
 module Cri
   class ProviderRegistration
     getter id : String
@@ -40,6 +42,36 @@ module Cri
 
     def find(id : String) : ProviderRegistration?
       all.find { |provider| provider.id == id }
+    end
+
+    def register_extension_effect(effect : JSON::Any, extension_name : String)
+      payload = effect.as_h
+      raise "unsupported extension effect: #{payload["type"]?.try(&.as_s?)}" unless payload["type"]?.try(&.as_s?) == "host.provider.register"
+
+      id = payload["id"]?.try(&.as_s?) || raise "provider registration missing id"
+      title = payload["title"]?.try(&.as_s?) || id
+      transport = payload["transport"]?.try(&.as_s?) || raise "provider registration missing transport"
+      flows = payload["auth_flows"]?.try(&.as_a).not_nil!.map do |flow_json|
+        flow = flow_json.as_h
+        kind = case flow["kind"]?.try(&.as_s?)
+               when "api_token"     then Auth::FlowKind::ApiToken
+               when "oauth_device"  then Auth::FlowKind::OAuthDevice
+               when "oauth_browser" then Auth::FlowKind::OAuthBrowser
+               else                      raise "unsupported auth flow kind"
+               end
+        metadata = {} of String => String
+        if metadata_json = flow["metadata"]?.try(&.as_h)
+          metadata_json.each { |key, value| metadata[key] = value.as_s }
+        end
+        Auth::Flow.new(flow["id"].as_s, kind, metadata)
+      end
+      register(ProviderRegistration.new(
+        "extension/#{extension_name}/#{id}",
+        title,
+        transport,
+        flows,
+        "extension:#{extension_name}"
+      ))
     end
   end
 end

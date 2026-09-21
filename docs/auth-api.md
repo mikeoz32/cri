@@ -26,10 +26,25 @@ host.providers.register(ProviderRegistration.new(
 ))
 ```
 
-An extension registration is namespaced as
-`extension/<extension-name>/<provider-id>`. Registration does not grant an
-extension access to tokens or permission to perform the login itself. The auth
-UI displays the provider and its flows from this registry.
+An extension `init` hook returns the serializable
+`host.provider.register` effect. The host validates it and namespaces the
+provider as `extension/<extension-name>/<provider-id>`:
+
+```json
+{
+  "type": "host.provider.register",
+  "id": "github",
+  "title": "GitHub",
+  "transport": "github",
+  "auth_flows": [
+    {"id": "device", "kind": "oauth_device"}
+  ]
+}
+```
+
+Registration does not grant an extension access to tokens or permission to
+perform the login itself. The auth UI displays the provider and its flows from
+this registry; auth providers are not configured through `extension.toml`.
 
 ## Host types
 

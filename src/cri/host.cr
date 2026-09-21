@@ -26,9 +26,10 @@ module Cri
       @builtins.register_builtins
       @builtins.register(ReadFileTool.new(config.cwd))
       @builtins.register(ListFilesTool.new(config.cwd))
-      register_auth_providers
+      register_builtin_providers
       @openai_api_credential = auth.import_env("openai-api", "api-key", "OPENAI_API_KEY") || auth.import_env("openai-api", "api-key", "CRI_API_KEY")
       @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities)
+      register_extension_provider_hooks
       @tools = ToolRouter.new(@builtins, @extensions, @invoker, config.grants)
       @commands = CommandRegistry.new
       @commands.register_builtin_commands
@@ -64,7 +65,7 @@ module Cri
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
     end
 
-    private def register_auth_providers
+    private def register_builtin_providers
       providers.register(ProviderRegistration.new(
         "openai-api",
         "OpenAI API",
@@ -80,26 +81,17 @@ module Cri
           Auth::Flow.new("device", Auth::FlowKind::OAuthDevice, {"transport" => "codex-app-server"}),
         ]
       ))
+    end
 
+    private def register_extension_provider_hooks
+      input = JSON.parse({"event" => "host.init"}.to_json)
       extensions.enabled(config.grants).each do |manifest|
-        manifest.auth_providers.each do |declaration|
-          provider_id = "extension/#{manifest.name}/#{declaration.id}"
-          flows = declaration.flows.map do |flow|
-            kind = case flow.kind
-                   when "api_token"     then Auth::FlowKind::ApiToken
-                   when "oauth_device"  then Auth::FlowKind::OAuthDevice
-                   when "oauth_browser" then Auth::FlowKind::OAuthBrowser
-                   else                      raise "invalid auth flow kind: #{flow.kind}"
-                   end
-            Auth::Flow.new(flow.id, kind, flow.metadata)
+        manifest.hooks.select { |hook| hook.name == "init" }.each do |hook|
+          response = invoker.invoke(manifest, "hook", hook.name, input)
+          raise "extension #{manifest.name} init failed: #{response.error}" unless response.ok
+          response.effects.each do |effect|
+            providers.register_extension_effect(effect, manifest.name)
           end
-          providers.register(ProviderRegistration.new(
-            provider_id,
-            declaration.title,
-            "extension/#{manifest.name}",
-            flows,
-            "extension:#{manifest.name}"
-          ))
         end
       end
     end

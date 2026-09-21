@@ -26,11 +26,3 @@ entrypoint = "cri_call"
 name = "fixture.notify"
 title = "Show fixture notification"
 entrypoint = "cri_call"
-
-[[auth.providers]]
-id = "example"
-title = "Example Service"
-
-[[auth.providers.flows]]
-id = "token"
-kind = "api_token"
