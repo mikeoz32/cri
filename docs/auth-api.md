@@ -14,6 +14,23 @@ The host registers two OpenAI provider families:
 The Codex transport is intentionally separate from the OpenAI API transport.
 A ChatGPT subscription credential is not treated as a normal OpenAI API key.
 
+Enabled extensions may declare additional providers:
+
+```toml
+[[auth.providers]]
+id = "github"
+title = "GitHub"
+
+[[auth.providers.flows]]
+id = "device"
+kind = "oauth_device"
+```
+
+The host validates these declarations and namespaces them as
+`extension/<extension-name>/<provider-id>`. The auth UI shows whether a
+provider is built-in or extension-provided. Declarations do not grant an
+extension access to tokens or permission to perform the login itself.
+
 ## Host types
 
 ```text

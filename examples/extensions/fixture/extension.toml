@@ -1,5 +1,6 @@
 name = "fixture"
 version = "0.1.0"
+
 abi = "cri.extension.v1"
 wasm = "plugin.wasm"
 
@@ -25,3 +26,11 @@ entrypoint = "cri_call"
 name = "fixture.notify"
 title = "Show fixture notification"
 entrypoint = "cri_call"
+
+[[auth.providers]]
+id = "example"
+title = "Example Service"
+
+[[auth.providers.flows]]
+id = "token"
+kind = "api_token"

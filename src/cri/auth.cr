@@ -22,8 +22,9 @@ module Cri
       getter id : String
       getter title : String
       getter flows : Array(Flow)
+      getter source : String
 
-      def initialize(@id : String, @title : String, @flows : Array(Flow))
+      def initialize(@id : String, @title : String, @flows : Array(Flow), @source : String = "built-in")
       end
 
       def flow(id : String) : Flow

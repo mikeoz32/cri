@@ -60,6 +60,27 @@ module Cri
           Auth::Flow.new("device", Auth::FlowKind::OAuthDevice, {"transport" => "codex-app-server"}),
         ]
       ))
+
+      extensions.enabled(config.grants).each do |manifest|
+        manifest.auth_providers.each do |declaration|
+          provider_id = "extension/#{manifest.name}/#{declaration.id}"
+          flows = declaration.flows.map do |flow|
+            kind = case flow.kind
+                   when "api_token"     then Auth::FlowKind::ApiToken
+                   when "oauth_device"  then Auth::FlowKind::OAuthDevice
+                   when "oauth_browser" then Auth::FlowKind::OAuthBrowser
+                   else                      raise "invalid auth flow kind: #{flow.kind}"
+                   end
+            Auth::Flow.new(flow.id, kind, flow.metadata)
+          end
+          auth.register(Auth::Provider.new(
+            provider_id,
+            declaration.title,
+            flows,
+            "extension:#{manifest.name}"
+          ))
+        end
+      end
     end
 
     private def register_extension_commands

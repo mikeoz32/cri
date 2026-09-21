@@ -34,6 +34,8 @@ module Cri
           {true, host.tools.names.join("\n")}
         when "extensions"
           {true, extensions_text}
+        when "auth"
+          {true, auth_text(args)}
         when "session"
           {true, "session: #{agent.session.id}\nmessages: #{agent.session.messages.size}"}
         when "clear"
@@ -56,6 +58,20 @@ module Cri
       private def extensions_text : String
         return "no valid extensions" if host.extensions.valid.empty?
         host.extensions.valid.map { |manifest| "#{manifest.name} #{manifest.version}" }.join("\n")
+      end
+
+      private def auth_text(args : String) : String
+        return "usage: /auth [status|providers]" unless args.empty? || args == "status" || args == "providers"
+
+        lines = ["Authentication providers:"]
+        host.auth.providers.each do |provider|
+          lines << "#{provider.title} (#{provider.source})"
+          provider.flows.each do |flow|
+            configured = host.auth.existing(provider.id, flow.id) ? "configured" : "not configured"
+            lines << "  #{flow.id}: #{configured}"
+          end
+        end
+        lines.join("\n")
       end
 
       private def execute_extension_command(name : String, args : String) : String
