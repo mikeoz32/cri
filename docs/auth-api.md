@@ -4,15 +4,17 @@ Authentication is host-owned. Extensions declare provider/flow configuration;
 they never receive raw API keys, access tokens, refresh tokens, client secrets,
 or callback handles.
 
-## Current providers
+## Provider and flow registration
 
-The host registers two OpenAI provider families:
+The host does not hardcode provider-specific OAuth endpoints. A provider or
+extension registers its `Auth::Flow` definitions through `host.providers`, and
+an OAuth flow supplies its own `OAuthConfig`: authorization/device/token URLs,
+client ID, scopes, redirect configuration, and extra parameters.
 
-- `openai-api` / `api-key` — direct OpenAI API access;
-- `openai-codex` / `chatgpt` or `device` — official Codex app-server login transport for ChatGPT subscription access.
-
-The Codex transport is intentionally separate from the OpenAI API transport.
-A ChatGPT subscription credential is not treated as a normal OpenAI API key.
+The generic host OAuth client supports browser Authorization Code + PKCE,
+RFC 8628 device authorization/polling, expiry, refresh-token rotation, and
+host-owned callback handling. No OpenAI or Codex endpoints are embedded in the
+core OAuth implementation.
 
 Providers are registered through the host provider registry. A registration
 contains the provider transport and its available `Auth::Flow` definitions:

@@ -61,6 +61,28 @@ module Cri
       ref
     end
 
+    def login_device(provider_id : String, flow_id : String, &on_status : String ->) : Auth::CredentialRef
+      provider = providers.find(provider_id)
+      raise "unknown auth provider: #{provider_id}" unless provider
+      flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
+      raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
+      raise "auth flow is not a device flow" unless flow.not_nil!.kind == Auth::FlowKind::OAuthDevice
+      config = flow.not_nil!.oauth || raise "OAuth device flow has no configuration"
+      tokens = Auth::OAuthClient.new.device_login(config) { |status| on_status.call(status) }
+      auth.import_opaque(provider_id, flow_id, tokens.to_json)
+    end
+
+    def login_browser(provider_id : String, flow_id : String, &on_status : String ->) : Auth::CredentialRef
+      provider = providers.find(provider_id)
+      raise "unknown auth provider: #{provider_id}" unless provider
+      flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
+      raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
+      raise "auth flow is not a browser OAuth flow" unless flow.not_nil!.kind == Auth::FlowKind::OAuthBrowser
+      config = flow.not_nil!.oauth || raise "OAuth browser flow has no configuration"
+      tokens = Auth::OAuthClient.new.browser_login(config) { |status| on_status.call(status) }
+      auth.import_opaque(provider_id, flow_id, tokens.to_json)
+    end
+
     def extension_command(name : String) : Extensions::Manifest?
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
     end
@@ -71,15 +93,6 @@ module Cri
         "OpenAI API",
         "openai",
         [Auth::Flow.new("api-key", Auth::FlowKind::ApiToken, {"validator" => "openai-models"})]
-      ))
-      providers.register(ProviderRegistration.new(
-        "openai-codex",
-        "ChatGPT / Codex",
-        "codex-app-server",
-        [
-          Auth::Flow.new("chatgpt", Auth::FlowKind::OAuthBrowser, {"transport" => "codex-app-server"}),
-          Auth::Flow.new("device", Auth::FlowKind::OAuthDevice, {"transport" => "codex-app-server"}),
-        ]
       ))
     end
 

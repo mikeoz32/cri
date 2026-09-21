@@ -94,6 +94,20 @@ module Cri
           rescue ex
             abort("authentication failed: #{ex.message || ex.class.name}")
           end
+        when Auth::FlowKind::OAuthBrowser
+          begin
+            ref = host.login_browser(provider_id, flow_id) { |status| STDERR.puts status }
+            puts "saved #{provider_id}/#{flow_id} as #{ref.id}"
+          rescue ex
+            abort("authentication failed: #{ex.message || ex.class.name}")
+          end
+        when Auth::FlowKind::OAuthDevice
+          begin
+            ref = host.login_device(provider_id, flow_id) { |status| STDERR.puts status }
+            puts "saved #{provider_id}/#{flow_id} as #{ref.id}"
+          rescue ex
+            abort("authentication failed: #{ex.message || ex.class.name}")
+          end
         else
           abort("#{provider_id}/#{flow_id} login transport is not implemented yet")
         end

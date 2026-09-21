@@ -9,12 +9,41 @@ module Cri
       OAuthBrowser
     end
 
+    class OAuthConfig
+      getter authorization_endpoint : String?
+      getter device_authorization_endpoint : String?
+      getter token_endpoint : String
+      getter client_id : String
+      getter scopes : Array(String)
+      getter redirect_uri : String?
+      getter audience : String?
+      getter extra_parameters : Hash(String, String)
+
+      def initialize(
+        @token_endpoint : String,
+        @client_id : String,
+        @authorization_endpoint : String? = nil,
+        @device_authorization_endpoint : String? = nil,
+        @scopes : Array(String) = [] of String,
+        @redirect_uri : String? = nil,
+        @audience : String? = nil,
+        @extra_parameters : Hash(String, String) = {} of String => String,
+      )
+      end
+    end
+
     class Flow
       getter id : String
       getter kind : FlowKind
       getter metadata : Hash(String, String)
+      getter oauth : OAuthConfig?
 
-      def initialize(@id : String, @kind : FlowKind, @metadata : Hash(String, String) = {} of String => String)
+      def initialize(
+        @id : String,
+        @kind : FlowKind,
+        @metadata : Hash(String, String) = {} of String => String,
+        @oauth : OAuthConfig? = nil,
+      )
       end
     end
 
@@ -276,6 +305,14 @@ module Cri
 
         ref = CredentialRef.new("cred-#{Random::Secure.hex(16)}", provider_id, flow_id)
         store.save(Credential.new(ref, token))
+        ref
+      end
+
+      def import_opaque(provider_id : String, flow_id : String, value : String) : CredentialRef
+        provider(provider_id).flow(flow_id)
+        raise ArgumentError.new("opaque credential is empty") if value.empty?
+        ref = CredentialRef.new("cred-#{Random::Secure.hex(16)}", provider_id, flow_id)
+        store.save(Credential.new(ref, value))
         ref
       end
 

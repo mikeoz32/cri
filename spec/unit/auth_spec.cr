@@ -37,6 +37,42 @@ describe Cri::Auth::Broker do
     store.persistent?.should be_false
   end
 
+  it "runs generic OAuth device polling and refresh" do
+    requests = [] of String
+    server = HTTP::Server.new do |context|
+      requests << context.request.path
+      body = context.request.body.try(&.gets_to_end) || ""
+      if context.request.path == "/device"
+        context.response.print(%({"device_code":"device-1","user_code":"USER-1","verification_uri":"https://example.test/device","expires_in":60,"interval":0}))
+      else
+        if body.includes?("grant_type=refresh_token")
+          context.response.print(%({"access_token":"access-2","token_type":"Bearer","expires_in":3600}))
+        else
+          context.response.print(%({"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","expires_in":3600}))
+        end
+      end
+    end
+    address = server.bind_tcp("127.0.0.1", 0)
+    spawn { server.listen }
+    config = Cri::Auth::OAuthConfig.new(
+      "http://127.0.0.1:#{address.port}/token",
+      "client",
+      nil,
+      "http://127.0.0.1:#{address.port}/device",
+      ["openid"]
+    )
+    statuses = [] of String
+    tokens = Cri::Auth::OAuthClient.new.device_login(config) { |status| statuses << status }
+
+    tokens.access_token.should eq("access-1")
+    statuses.should contain("Code: USER-1")
+    refreshed = Cri::Auth::OAuthClient.new.refresh(config, tokens.refresh_token.not_nil!)
+    refreshed.access_token.should eq("access-2")
+    requests.should eq(["/device", "/token", "/token"])
+  ensure
+    server.try(&.close)
+  end
+
   it "persists only cri-owned credentials and reloads them" do
     root = "/tmp/cri-auth-store-#{Process.pid}-#{Random.rand(1_000_000)}"
     path = File.join(root, "auth.json")

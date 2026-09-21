@@ -33,12 +33,22 @@ describe Cri::Host do
       "id"         => "example",
       "title"      => "Example Service",
       "transport"  => "example",
-      "auth_flows" => [{"id" => "token", "kind" => "api_token"}],
+      "auth_flows" => [{
+        "id"    => "device",
+        "kind"  => "oauth_device",
+        "oauth" => {
+          "device_authorization_endpoint" => "https://auth.example/device",
+          "token_endpoint"                => "https://auth.example/token",
+          "client_id"                     => "client",
+          "scopes"                        => ["openid", "offline_access"],
+        },
+      }],
     }.to_json)
 
     host.providers.register_extension_effect(effect, "fixture")
 
     provider = host.providers.find("extension/fixture/example").not_nil!
-    provider.auth_flows.first.kind.should eq(Cri::Auth::FlowKind::ApiToken)
+    provider.auth_flows.first.kind.should eq(Cri::Auth::FlowKind::OAuthDevice)
+    provider.auth_flows.first.oauth.not_nil!.scopes.should eq(["openid", "offline_access"])
   end
 end

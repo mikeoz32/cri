@@ -63,7 +63,8 @@ module Cri
         if metadata_json = flow["metadata"]?.try(&.as_h)
           metadata_json.each { |key, value| metadata[key] = value.as_s }
         end
-        Auth::Flow.new(flow["id"].as_s, kind, metadata)
+        oauth = parse_oauth_config(flow["oauth"]?)
+        Auth::Flow.new(flow["id"].as_s, kind, metadata, oauth)
       end
       register(ProviderRegistration.new(
         "extension/#{extension_name}/#{id}",
@@ -72,6 +73,26 @@ module Cri
         flows,
         "extension:#{extension_name}"
       ))
+    end
+
+    private def parse_oauth_config(value : JSON::Any?) : Auth::OAuthConfig?
+      return nil unless json = value
+      config = json.as_h
+      token_endpoint = config["token_endpoint"]?.try(&.as_s) || raise "OAuth config missing token_endpoint"
+      client_id = config["client_id"]?.try(&.as_s) || raise "OAuth config missing client_id"
+      scopes = config["scopes"]?.try(&.as_a).try(&.map(&.as_s)) || [] of String
+      extras = {} of String => String
+      config["extra_parameters"]?.try(&.as_h).try(&.each { |key, item| extras[key] = item.as_s })
+      Auth::OAuthConfig.new(
+        token_endpoint,
+        client_id,
+        config["authorization_endpoint"]?.try(&.as_s?),
+        config["device_authorization_endpoint"]?.try(&.as_s?),
+        scopes,
+        config["redirect_uri"]?.try(&.as_s?),
+        config["audience"]?.try(&.as_s?),
+        extras
+      )
     end
   end
 end
