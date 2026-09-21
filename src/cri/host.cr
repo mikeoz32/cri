@@ -61,6 +61,31 @@ module Cri
       ref
     end
 
+    def login_browser(provider_id : String, flow_id : String, &on_status : String ->) : Auth::CredentialRef
+      provider = providers.find(provider_id)
+      raise "unknown auth provider: #{provider_id}" unless provider
+      flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
+      raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
+      raise "auth flow is not a browser OAuth flow" unless flow.not_nil!.kind == Auth::FlowKind::OAuthBrowser
+
+      transport = flow.not_nil!.metadata["transport"]? || provider.not_nil!.transport
+      case transport
+      when "codex-app-server"
+        result = Auth::CodexAppServer.new(Auth::CodexAppServer.default_home(provider_id)).login_browser { |status| on_status.call(status) }
+        auth.import_opaque(provider_id, flow_id, "managed-home:#{result.home}")
+      else
+        raise "no host OAuth browser adapter for transport: #{transport}"
+      end
+    end
+
+    def logout_auth(provider_id : String, flow_id : String)
+      auth.logout(provider_id, flow_id)
+      provider = providers.find(provider_id)
+      if provider && provider.not_nil!.transport == "codex-app-server"
+        FileUtils.rm_rf(Auth::CodexAppServer.default_home(provider_id))
+      end
+    end
+
     def extension_command(name : String) : Extensions::Manifest?
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
     end

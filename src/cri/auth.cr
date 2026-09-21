@@ -279,6 +279,14 @@ module Cri
         ref
       end
 
+      def import_opaque(provider_id : String, flow_id : String, value : String) : CredentialRef
+        provider(provider_id).flow(flow_id)
+        raise ArgumentError.new("opaque credential is empty") if value.empty?
+        ref = CredentialRef.new("cred-#{Random::Secure.hex(16)}", provider_id, flow_id)
+        store.save(Credential.new(ref, value))
+        ref
+      end
+
       def import_env(provider_id : String, flow_id : String, env_name : String) : CredentialRef?
         token = ENV[env_name]?
         return existing(provider_id, flow_id) unless token && !token.empty?
