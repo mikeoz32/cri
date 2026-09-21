@@ -32,6 +32,11 @@ describe Cri::Auth::Broker do
     broker.secret(ref).should eq("secret-token")
   end
 
+  it "keeps the memory store explicitly non-persistent" do
+    store = Cri::Auth::MemoryCredentialStore.new
+    store.persistent?.should be_false
+  end
+
   it "rejects API tokens for non-token flows" do
     broker = Cri::Auth::Broker.new
     broker.register(Cri::Auth::Provider.new(

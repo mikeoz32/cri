@@ -56,9 +56,21 @@ module Cri
     end
 
     abstract class CredentialStore
+      def self.default : CredentialStore
+        if SecretServiceCredentialStore.available?
+          SecretServiceCredentialStore.new
+        else
+          MemoryCredentialStore.new
+        end
+      end
+
       abstract def save(credential : Credential)
       abstract def get(ref : CredentialRef) : Credential?
       abstract def delete(ref : CredentialRef)
+
+      def persistent? : Bool
+        false
+      end
     end
 
     class MemoryCredentialStore < CredentialStore
@@ -77,13 +89,52 @@ module Cri
       end
     end
 
+    # Linux Secret Service adapter. secret-tool receives the secret on stdin,
+    # never in process arguments, so it cannot appear in the process list.
+    class SecretServiceCredentialStore < CredentialStore
+      def self.available? : Bool
+        !!Process.find_executable("secret-tool") && !ENV["DBUS_SESSION_BUS_ADDRESS"]?.try(&.empty?)
+      end
+
+      def save(credential : Credential)
+        run("store", "--label=cri credential", "provider", credential.ref.provider_id, "flow", credential.ref.flow_id, "id", credential.ref.id, input: credential.secret)
+        raise "secret service failed to store credential" unless @last_status
+      end
+
+      def get(ref : CredentialRef) : Credential?
+        output = run("lookup", "provider", ref.provider_id, "flow", ref.flow_id, "id", ref.id)
+        return nil unless @last_status
+        secret = output.rstrip
+        return nil if secret.empty?
+        Credential.new(ref, secret)
+      end
+
+      def delete(ref : CredentialRef)
+        run("clear", "provider", ref.provider_id, "flow", ref.flow_id, "id", ref.id)
+      end
+
+      def persistent? : Bool
+        true
+      end
+
+      private getter last_status : Bool = false
+
+      private def run(*args : String, input : String? = nil) : String
+        output = IO::Memory.new
+        input_io = input ? IO::Memory.new(input.not_nil!) : Process::Redirect::Inherit
+        status = Process.run("secret-tool", args: args.to_a, input: input_io, output: output, error: Process::Redirect::Inherit)
+        @last_status = status.success?
+        output.to_s
+      end
+    end
+
     # Host-only authentication broker. Extensions receive CredentialRef values
     # at most; the secret remains inside the host and its provider adapter.
     class Broker
       getter store : CredentialStore
       @providers = {} of String => Provider
 
-      def initialize(@store : CredentialStore = MemoryCredentialStore.new)
+      def initialize(@store : CredentialStore = CredentialStore.default)
       end
 
       def register(provider : Provider)

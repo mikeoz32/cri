@@ -40,8 +40,11 @@ OPENAI_API_KEY / explicit host input
 → OpenAI host provider
 ```
 
-The current store is process-memory based. A persistent OS keyring-backed store
-is required before enabling durable credential persistence.
+On Linux the host uses the Secret Service backend when `secret-tool` and a
+DBus session are available. In headless/dev environments without Secret
+Service it explicitly falls back to process memory; that fallback is not
+persistent and is not a secure durable credential store. Durable persistence
+must use an OS keyring backend.
 
 ## Async flows
 
