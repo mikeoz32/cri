@@ -77,14 +77,8 @@ The CLI commands are:
 ```text
 cri auth status
 cri auth login openai-api
-cri auth login openai-codex chatgpt
 cri auth logout openai-api
-cri auth logout openai-codex chatgpt
 ```
-
-A provider's browser `Auth::Flow` selects its host transport through flow
-metadata. The OpenAI provider uses `codex-app-server`; this is not a generic
-OpenAI API-key flow.
 
 The interactive token prompt disables terminal echo and does not put the token
 in command arguments or transcript output. For `openai-api/api-key`, the host

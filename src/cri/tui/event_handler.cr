@@ -127,26 +127,6 @@ module Cri
 
         return true if raw.strip.empty?
 
-        if command_mode && (target = browser_auth_target(raw))
-          ui.append_transcript(": #{raw}\n", "command")
-          @history << raw
-          @history_index = @history.size
-          ui.input.clear
-          ui.end_command
-          ui.set_activity("starting authentication\n", "activity")
-          spawn do
-            begin
-              ref = controller.host.login_browser(target[0], target[1]) { |status| ui.set_activity("#{status}\n", "activity") }
-              ui.append_transcript("assistant: saved #{target[0]}/#{target[1]} as #{ref.id}\n", "assistant")
-              ui.set_activity("authentication saved\n", "activity")
-            rescue ex
-              ui.append_transcript("error: #{ex.message || ex.class.name}\n", "error")
-              ui.set_activity("authentication failed\n", "activity")
-            end
-          end
-          return true
-        end
-
         if command_mode && begin_auth_prompt(raw)
           ui.append_transcript(": #{raw}\n", "command")
           @history << raw
@@ -192,18 +172,6 @@ module Cri
           command_mode ? ui.end_command : ui.end_insert
         end
         keep_running
-      end
-
-      private def browser_auth_target(raw : String) : {String, String}?
-        parts = raw.split
-        return nil unless parts.size >= 3 && parts[0] == "auth" && parts[1] == "login"
-        provider = controller.host.providers.find(parts[2])
-        return nil unless provider
-        flow_id = parts[3]? || provider.auth_flows.first?.try(&.id)
-        return nil unless flow_id
-        flow = provider.auth_flows.find { |candidate| candidate.id == flow_id }
-        return nil unless flow && flow.kind == Auth::FlowKind::OAuthBrowser
-        {provider.id, flow.id}
       end
 
       private def begin_auth_prompt(raw : String) : Bool
