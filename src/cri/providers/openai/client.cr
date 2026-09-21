@@ -101,7 +101,9 @@ module Cri
         getter body : String
 
         def initialize(@status : Int32, @body : String)
-          super("OpenAI API error (#{status}): #{body}")
+          detail = body.strip
+          detail = "API key rejected; use an OpenAI Platform API key, not a ChatGPT/Codex token" if status == 401
+          super("OpenAI API error (#{status}): #{detail}")
         end
       end
 
