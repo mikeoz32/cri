@@ -74,11 +74,17 @@ describe Cri::Auth::Broker do
   end
 
   it "runs the Codex-compatible device-code flow" do
+    polls = 0
     server = HTTP::Server.new do |context|
       if context.request.path.ends_with?("/usercode")
         context.response.print(%({"device_auth_id":"device-1","user_code":"CODE-1","interval":0}))
       elsif context.request.path == "/token"
-        context.response.print(%({"authorization_code":"auth-code","code_verifier":"verifier"}))
+        polls += 1
+        if polls == 1
+          context.response.status_code = 403
+        else
+          context.response.print(%({"authorization_code":"auth-code","code_verifier":"verifier"}))
+        end
       else
         context.response.print(%({"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","expires_in":3600}))
       end

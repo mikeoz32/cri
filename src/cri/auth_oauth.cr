@@ -30,7 +30,7 @@ module Cri
     class OAuthClient
       DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 
-      def initialize(@timeout : Time::Span = 15.seconds)
+      def initialize(@timeout : Time::Span = 60.seconds)
       end
 
       def device_login(config : OAuthConfig, &on_status : String ->) : OAuthTokens
@@ -86,7 +86,7 @@ module Cri
         on_status.call("Open #{verification}")
         on_status.call("Code: #{user_code}")
 
-        deadline = Time.utc + 15.minutes
+        deadline = Time.utc + 30.minutes
         loop do
           raise "OAuth device authorization expired" if Time.utc >= deadline
           sleep interval.seconds
@@ -230,8 +230,11 @@ module Cri
         client.connect_timeout = @timeout
         client.read_timeout = @timeout
         response = client.post(uri.request_target, headers: HTTP::Headers{"Content-Type" => "application/json"}, body: payload.to_json)
-        body = JSON.parse(response.body).as_h
-        raise "OAuth HTTP error (#{response.status_code})" unless response.success? || allow_error
+        body = response.body.empty? ? {} of String => JSON::Any : JSON.parse(response.body).as_h
+        unless response.success?
+          return JSON.parse(%({"error":"authorization_pending"})).as_h if allow_error && {403, 404}.includes?(response.status_code)
+          raise "OAuth HTTP error (#{response.status_code})"
+        end
         body
       ensure
         client.try(&.close)
