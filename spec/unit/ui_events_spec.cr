@@ -65,7 +65,10 @@ describe Cri::Tui::EventHandler do
     host.providers.register(Cri::ProviderRegistration.new(
       "test-provider",
       "Test Provider",
-      "test",
+      "test-api",
+      "https://example.test/v1",
+      "test-model",
+      "http+sse",
       [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)]
     ))
     controller = Cri::Tui::Controller.new(host, UiEventNoopProvider.new)

@@ -5,7 +5,7 @@ module Cri
     class Shell
       getter controller : Controller
 
-      def initialize(host : Host, provider : Provider = Providers::OpenAICompatible.new)
+      def initialize(host : Host, provider : Provider? = nil)
         @controller = Controller.new(host, provider)
       end
 

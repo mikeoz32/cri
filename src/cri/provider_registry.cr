@@ -4,14 +4,20 @@ module Cri
   class ProviderRegistration
     getter id : String
     getter title : String
-    getter transport : String
+    getter api_type : String
+    getter endpoint : String
+    getter model : String
+    getter transport_type : String
     getter auth_flows : Array(Auth::Flow)
     getter source : String
 
     def initialize(
       @id : String,
       @title : String,
-      @transport : String,
+      @api_type : String,
+      @endpoint : String,
+      @model : String,
+      @transport_type : String = "http+sse",
       @auth_flows : Array(Auth::Flow) = [] of Auth::Flow,
       @source : String = "built-in",
     )
@@ -50,7 +56,10 @@ module Cri
 
       id = payload["id"]?.try(&.as_s?) || raise "provider registration missing id"
       title = payload["title"]?.try(&.as_s?) || id
-      transport = payload["transport"]?.try(&.as_s?) || raise "provider registration missing transport"
+      api_type = payload["api_type"]?.try(&.as_s?) || raise "provider registration missing api_type"
+      endpoint = payload["endpoint"]?.try(&.as_s?) || raise "provider registration missing endpoint"
+      model = payload["model"]?.try(&.as_s?) || ""
+      transport_type = payload["transport"]?.try(&.as_s?) || "http+sse"
       flows = payload["auth_flows"]?.try(&.as_a).not_nil!.map do |flow_json|
         flow = flow_json.as_h
         kind = case flow["kind"]?.try(&.as_s?)
@@ -69,7 +78,10 @@ module Cri
       register(ProviderRegistration.new(
         "extension/#{extension_name}/#{id}",
         title,
-        transport,
+        api_type,
+        endpoint,
+        model,
+        transport_type,
         flows,
         "extension:#{extension_name}"
       ))

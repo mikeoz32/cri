@@ -1,6 +1,8 @@
 module Cri
   module Providers
-    class OpenAI < Provider
+    # OpenAI-compatible API client. Provider identity/configuration lives in
+    # ProviderRegistration and ProviderRuntime.
+    class OpenAI < APIClient
       getter client : OpenAIAPI::Client
       getter model : String
 
@@ -8,9 +10,10 @@ module Cri
         endpoint : String = ENV["CRI_MODEL_URL"]? || "https://api.openai.com/v1/chat/completions",
         @model : String = ENV["CRI_MODEL"]? || "gpt-4o-mini",
         api_key : String? = ENV["CRI_API_KEY"]?,
-        timeout : Time::Span = 120.seconds
+        timeout : Time::Span = 120.seconds,
+        transport : Cri::Transport = Cri::Transports::SSE.new,
       )
-        @client = OpenAIAPI::Client.new(endpoint, api_key, timeout)
+        @client = OpenAIAPI::Client.new(endpoint, api_key, timeout, transport)
       end
 
       def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
@@ -19,6 +22,10 @@ module Cri
 
       def supports_streaming? : Bool
         true
+      end
+
+      def validate_credentials : Nil
+        client.validate_api_key
       end
 
       def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
@@ -63,9 +70,9 @@ module Cri
 
       private def payload(messages : Array(Message), tools : Array(ToolSpec), stream : Bool) : JSON::Any
         body = {
-          "model" => model,
+          "model"    => model,
           "messages" => messages.map(&.to_api_json),
-          "stream" => stream,
+          "stream"   => stream,
         }
         body["tools"] = tools.map(&.to_json_any) unless tools.empty?
         JSON.parse(body.to_json)

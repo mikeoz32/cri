@@ -1,0 +1,8 @@
+name = "openai"
+version = "0.1.0"
+abi = "cri.extension.v1"
+wasm = "plugin.wasm"
+
+[[hooks]]
+name = "init"
+entrypoint = "cri_call"

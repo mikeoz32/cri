@@ -5,7 +5,7 @@ module Cri
       getter agent : Agent
 
       def initialize(@host : Host, provider : Provider? = nil)
-        @agent = host.agent(provider || host.openai_provider)
+        @agent = host.agent(provider || host.default_provider)
       end
 
       def submit(input : String) : Tuple(Bool, String)

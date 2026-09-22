@@ -8,6 +8,10 @@ module Cri
       def initialize(@runtime : Wasm::Runtime = default_runtime, @grants : Permissions::GrantPolicy = Permissions::GrantPolicy.default, @capabilities : API::CapabilityBroker = API::CapabilityBroker.deny_all)
       end
 
+      def available? : Bool
+        !runtime.is_a?(Wasm::UnimplementedRuntime)
+      end
+
       def invoke(manifest : Manifest, kind : String, name : String, input : JSON::Any, ui_sink : Effects::UiSink? = nil) : Wasm::ResponseEnvelope
         return failure("extension is disabled: #{manifest.name}") unless grants.enabled?(manifest.name)
 

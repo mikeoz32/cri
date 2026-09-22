@@ -12,7 +12,8 @@ module Cri
     getter capabilities : API::CapabilityBroker
     getter auth : Auth::Broker
     getter providers : ProviderRegistry
-    getter openai_api_credential : Auth::CredentialRef?
+    getter transports : Transports::Registry
+    getter api_clients : APIClientRegistry
 
     def initialize(
       @config : Config = Config.load,
@@ -21,14 +22,14 @@ module Cri
       @auth : Auth::Broker = Auth::Broker.new,
     )
       @extensions = Extensions::Registry.new(config.extension_dirs).discover
+      @transports = Transports::Registry.new
+      @api_clients = APIClientRegistry.new
+      register_api_clients
       @providers = ProviderRegistry.new(auth)
       @builtins = ToolRegistry.new
       @builtins.register_builtins
       @builtins.register(ReadFileTool.new(config.cwd))
       @builtins.register(ListFilesTool.new(config.cwd))
-      if providers.find("openai")
-        @openai_api_credential = auth.import_env("openai", "api-key", "OPENAI_API_KEY") || auth.import_env("openai", "api-key", "CRI_API_KEY")
-      end
       @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities)
       register_extension_provider_hooks
       @tools = ToolRouter.new(@builtins, @extensions, @invoker, config.grants)
@@ -41,9 +42,26 @@ module Cri
       Agent.new(provider, tools, events, session)
     end
 
-    def openai_provider : Provider
-      api_key = openai_api_credential.try { |ref| auth.secret(ref) }
-      Providers::OpenAI.new(api_key: api_key)
+    def default_provider : Provider
+      registration = providers.all.first? || raise "no provider registered; load a provider extension first"
+      provider(registration.id)
+    end
+
+    def provider(provider_id : String, flow_id : String? = nil) : Provider
+      registration = providers.find(provider_id) || raise "unknown provider: #{provider_id}"
+      flow = if selected_flow_id = flow_id
+               registration.auth_flow(selected_flow_id)
+             else
+               registration.auth_flows.first? || raise "provider has no auth flows: #{provider_id}"
+             end
+      ref = auth.existing(provider_id, flow.id)
+      unless ref
+        if env_name = flow.metadata["env"]?
+          ref = auth.import_env(provider_id, flow.id, env_name)
+        end
+      end
+      secret = ref.try { |credential| auth.secret(credential) }
+      ProviderRuntime.new(registration, api_clients.build(registration, secret))
     end
 
     def login_api_token(provider_id : String, flow_id : String, secret : String) : Auth::CredentialRef
@@ -53,13 +71,11 @@ module Cri
       raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
       raise "auth flow is not an API token flow" unless flow.not_nil!.kind == Auth::FlowKind::ApiToken
 
-      if flow.not_nil!.metadata["validator"]? == "openai-models" && auth.store.persistent?
-        Providers::OpenAIAPI::Client.new(api_key: secret).validate_api_key
+      if flow.not_nil!.metadata["validate"]? == "api_client" && auth.store.persistent?
+        api_clients.validate(provider.not_nil!, secret)
       end
 
-      ref = auth.import_api_token(provider_id, flow_id, secret)
-      @openai_api_credential = ref if provider.not_nil!.transport == "openai"
-      ref
+      auth.import_api_token(provider_id, flow_id, secret)
     end
 
     def login_device(provider_id : String, flow_id : String, &on_status : String ->) : Auth::CredentialRef
@@ -88,7 +104,15 @@ module Cri
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
     end
 
+    private def register_api_clients
+      api_clients.register("openai") do |registration, secret|
+        transport = transports.build(registration.transport_type)
+        Providers::OpenAI.new(registration.endpoint, registration.model, secret, transport: transport)
+      end
+    end
+
     private def register_extension_provider_hooks
+      return unless invoker.available?
       input = JSON.parse({"event" => "host.init"}.to_json)
       extensions.enabled(config.grants).each do |manifest|
         manifest.hooks.select { |hook| hook.name == "init" }.each do |hook|

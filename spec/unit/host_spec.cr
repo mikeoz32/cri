@@ -16,16 +16,35 @@ describe Cri::Host do
     host.providers.register(Cri::ProviderRegistration.new(
       "test-provider",
       "Test Provider",
-      "test",
+      "test-api",
+      "https://example.test/v1",
+      "test-model",
+      "http+sse",
       [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)]
     ))
     test_provider = host.providers.find("test-provider").not_nil!
-    test_provider.transport.should eq("test")
+    test_provider.api_type.should eq("test-api")
+    test_provider.endpoint.should eq("https://example.test/v1")
+    test_provider.model.should eq("test-model")
+    test_provider.transport_type.should eq("http+sse")
     test_provider.auth_flows.first.id.should eq("api-key")
+    host.providers.register(Cri::ProviderRegistration.new(
+      "openrouter",
+      "OpenRouter",
+      "openai",
+      "https://openrouter.ai/api/v1/chat/completions",
+      "openai/gpt-4o-mini",
+      "http+sse",
+      [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)]
+    ))
+    host.provider("openrouter").should be_a(Cri::ProviderRuntime)
     host.providers.register(Cri::ProviderRegistration.new(
       "extension/fixture/example",
       "Example Service",
-      "extension/fixture",
+      "example-api",
+      "https://example.test/v1",
+      "example-model",
+      "http+sse",
       [Cri::Auth::Flow.new("token", Cri::Auth::FlowKind::ApiToken)],
       "extension:fixture"
     ))
@@ -38,7 +57,9 @@ describe Cri::Host do
       "type"       => "host.provider.register",
       "id"         => "example",
       "title"      => "Example Service",
-      "transport"  => "example",
+      "api_type"   => "example-api",
+      "endpoint"   => "https://example.test/v1",
+      "model"      => "example-model",
       "auth_flows" => [{
         "id"    => "device",
         "kind"  => "oauth_device",
