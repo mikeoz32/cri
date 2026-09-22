@@ -26,6 +26,32 @@ module Cri
     def display_id : String
       "#{provider_id.split('/').last}/#{model}"
     end
+
+    def to_json_any : JSON::Any
+      JSON.parse({
+        "id" => id,
+        "provider_id" => provider_id,
+        "model" => model,
+        "title" => title,
+        "auth_flow_id" => auth_flow_id,
+        "api_type" => api_type,
+        "endpoint" => endpoint,
+        "transport" => transport_type,
+      }.to_json)
+    end
+
+    def self.from_json(value : JSON::Any) : ModelRef
+      new(
+        value["id"].as_s,
+        value["provider_id"].as_s,
+        value["model"].as_s,
+        value["title"]?.try(&.as_s?) || value["model"].as_s,
+        value["auth_flow_id"]?.try(&.as_s?),
+        value["api_type"]?.try(&.as_s?) || "",
+        value["endpoint"]?.try(&.as_s?),
+        value["transport"]?.try(&.as_s?) || "http"
+      )
+    end
   end
 
   class ProviderRegistration
