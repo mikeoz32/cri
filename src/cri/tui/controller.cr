@@ -84,7 +84,23 @@ module Cri
       end
 
       private def auth_text(args : String)
-        return "usage: /auth [status|providers]" unless args.empty? || args == "status" || args == "providers"
+        parts = args.split
+        if parts[0]? == "logout"
+          provider_id = parts[1]?
+          return "usage: /auth logout PROVIDER [FLOW]" unless provider_id
+          provider = host.providers.find(provider_id)
+          return "unknown auth provider: #{provider_id}" unless provider
+          flow_id = parts[2]? || provider.not_nil!.auth_flows.first?.try(&.id)
+          return "provider has no auth flows" unless flow_id
+          begin
+            host.logout_auth(provider_id, flow_id)
+            return "logged out #{provider_id}/#{flow_id}"
+          rescue ex
+            return "logout failed: #{ex.message || ex.class.name}"
+          end
+        end
+
+        return "usage: /auth [status|providers|login|logout]" unless args.empty? || args == "status" || args == "providers" || parts[0]? == "login"
 
         lines = ["Authentication providers:"]
         host.providers.all.each do |provider|

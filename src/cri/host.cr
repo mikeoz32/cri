@@ -109,6 +109,10 @@ module Cri
       auth.import_opaque(provider_id, flow_id, tokens.to_json)
     end
 
+    def logout_auth(provider_id : String, flow_id : String)
+      auth.logout(provider_id, flow_id)
+    end
+
     def extension_command(name : String) : Extensions::Manifest?
       extensions.enabled(config.grants).find { |manifest| manifest.commands.any? { |command| command.name == name } }
     end
