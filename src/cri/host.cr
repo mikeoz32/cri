@@ -26,8 +26,9 @@ module Cri
       @builtins.register_builtins
       @builtins.register(ReadFileTool.new(config.cwd))
       @builtins.register(ListFilesTool.new(config.cwd))
-      Providers::OpenAI::Registration.register(providers)
-      @openai_api_credential = auth.import_env("openai", "api-key", "OPENAI_API_KEY") || auth.import_env("openai", "api-key", "CRI_API_KEY")
+      if providers.find("openai")
+        @openai_api_credential = auth.import_env("openai", "api-key", "OPENAI_API_KEY") || auth.import_env("openai", "api-key", "CRI_API_KEY")
+      end
       @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities)
       register_extension_provider_hooks
       @tools = ToolRouter.new(@builtins, @extensions, @invoker, config.grants)

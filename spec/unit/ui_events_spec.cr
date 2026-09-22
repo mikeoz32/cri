@@ -62,18 +62,24 @@ describe Cri::Tui::EventHandler do
     ui = Cri::Tui::UiRuntime.new
     auth = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
     host = Cri::Host.new(auth: auth)
+    host.providers.register(Cri::ProviderRegistration.new(
+      "test-provider",
+      "Test Provider",
+      "test",
+      [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)]
+    ))
     controller = Cri::Tui::Controller.new(host, UiEventNoopProvider.new)
     handler = Cri::Tui::EventHandler.new(ui, controller)
 
     handler.handle(Cri::Tui::KeyEvent.character(":")) { }
-    "auth login openai".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
+    "auth login test-provider".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
     handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
     ui.input.masked.should be_true
     "secret-token".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
     handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
     sleep 10.milliseconds
 
-    auth.existing("openai", "api-key").should_not be_nil
+    auth.existing("test-provider", "api-key").should_not be_nil
     ui.transcript.content.should_not contain("secret-token")
     ui.input.content.should be_empty
     ui.input.masked.should be_false

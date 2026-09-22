@@ -29,9 +29,8 @@ host.providers.register(ProviderRegistration.new(
 ```
 
 An extension `init` hook returns the serializable
-`host.provider.register` effect. The first-party OpenAI provider uses the same
-registration shape from `src/cri/providers/openai/registration.cr`; its OAuth
-URLs and client configuration are not part of the generic auth engine. The host validates it and namespaces the
+`host.provider.register` effect. Each provider supplies its own OAuth URLs and
+client configuration; those values are not part of the generic auth engine. The host validates it and namespaces the
 provider as `extension/<extension-name>/<provider-id>`:
 
 ```json
