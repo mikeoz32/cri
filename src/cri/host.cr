@@ -61,7 +61,7 @@ module Cri
         end
       end
       secret = ref.try { |credential| auth.secret(credential) }
-      ProviderRuntime.new(registration, api_clients.build(registration, secret))
+      Provider.new(registration, api_clients.build(registration, secret))
     end
 
     def login_api_token(provider_id : String, flow_id : String, secret : String) : Auth::CredentialRef

@@ -37,7 +37,7 @@ describe Cri::Host do
       "http+sse",
       [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)]
     ))
-    host.provider("openrouter").should be_a(Cri::ProviderRuntime)
+    host.provider("openrouter").should be_a(Cri::Provider)
     host.providers.register(Cri::ProviderRegistration.new(
       "extension/fixture/example",
       "Example Service",
