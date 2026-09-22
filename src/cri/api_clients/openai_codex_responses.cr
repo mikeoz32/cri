@@ -26,6 +26,7 @@ module Cri
         response = transport.request("GET", models_endpoint, headers, nil)
         raise "ChatGPT model discovery failed (#{response.status})" unless response.status.in?(200...300)
         JSON.parse(response.body)["models"].as_a.compact_map do |entry|
+          next if entry["visibility"]?.try(&.as_s?) == "hide"
           entry["slug"]?.try(&.as_s?)
         end
       end
