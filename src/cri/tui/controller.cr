@@ -57,11 +57,7 @@ module Cri
         when "model"
           model_command(args)
         when "session"
-          if active = agent
-            {true, "session: #{active.session.id}\nmodel: #{session.current_model.try(&.id) || "none"}\nmessages: #{active.session.messages.size}"}
-          else
-            {true, "no active provider"}
-          end
+          session_command(args)
         when "clear"
           if active = agent
             active.session.clear
@@ -133,6 +129,41 @@ module Cri
           {true, "selected model #{host.providers.display_id(model)}"}
         rescue ex
           {true, "model selection failed: #{ex.message || ex.class.name}"}
+        end
+      end
+
+      private def session_command(args : String) : Tuple(Bool, String)
+        parts = args.split
+        case parts.first?
+        when "list"
+          sessions = @sessions.list
+          return {true, "Sessions:\n(none)"} if sessions.empty?
+          lines = ["Sessions:"]
+          sessions.each do |item|
+            marker = item.id == session.id ? "*" : " "
+            model = item.current_model.try { |ref| host.providers.display_id(ref) } || item.current_model.try(&.model) || "none"
+            lines << "#{marker} #{item.id} — #{model}, #{item.messages.size} message(s)"
+          end
+          {true, lines.join("\n")}
+        when "restore"
+          id = parts[1]?
+          return {false, "usage: /session restore SESSION_ID"} unless id
+          restored = @sessions.load(id)
+          return {false, "session not found: #{id}"} unless restored
+          @session = restored
+          @agent = restored.current_model.try { |model| host.agent(host.model(model), restored) }
+          {true, "restored session #{restored.id}"}
+        when "new"
+          @session = Session.new
+          @agent = nil
+          {true, "created session #{session.id}"}
+        else
+          if active = agent
+            model = session.current_model.try { |ref| host.providers.display_id(ref) } || "none"
+            {true, "session: #{active.session.id}\nmodel: #{model}\nmessages: #{active.session.messages.size}"}
+          else
+            {true, "session: #{session.id}\nmodel: #{session.current_model.try(&.model) || "none"}\nmessages: #{session.messages.size}"}
+          end
         end
       end
 
