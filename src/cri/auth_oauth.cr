@@ -34,6 +34,7 @@ module Cri
       end
 
       def device_login(config : OAuthConfig, &on_status : String ->) : OAuthTokens
+        return openai_codex_device_login(config) { |status| on_status.call(status) } if config.device_protocol == "openai_codex"
         endpoint = config.device_authorization_endpoint || raise "OAuth flow has no device authorization endpoint"
         device = post_form(endpoint, {
           "client_id" => config.client_id,
@@ -72,6 +73,39 @@ module Cri
           else
             raise "OAuth token request failed#{response["error_description"]?.try { |value| ": #{value.as_s}" } || ""}"
           end
+        end
+      end
+
+      private def openai_codex_device_login(config : OAuthConfig, &on_status : String ->) : OAuthTokens
+        endpoint = config.device_authorization_endpoint || raise "OAuth device flow has no user-code endpoint"
+        device = post_json(endpoint, {"client_id" => config.client_id})
+        device_id = device["device_auth_id"]?.try(&.as_s) || raise "device response omitted device_auth_id"
+        user_code = device["user_code"]?.try(&.as_s) || raise "device response omitted user_code"
+        interval = device["interval"]?.try(&.as_i64) || device["interval"]?.try(&.as_s).try(&.to_i64) || 5_i64
+        verification = config.device_verification_uri || raise "device flow has no verification URI"
+        on_status.call("Open #{verification}")
+        on_status.call("Code: #{user_code}")
+
+        deadline = Time.utc + 15.minutes
+        loop do
+          raise "OAuth device authorization expired" if Time.utc >= deadline
+          sleep interval.seconds
+          response = post_json(config.device_token_endpoint || raise("device flow has no token endpoint"), {"device_auth_id" => device_id, "user_code" => user_code}, allow_error: true)
+          if authorization_code = response["authorization_code"]?.try(&.as_s?)
+            verifier = response["code_verifier"]?.try(&.as_s) || raise "device response omitted code_verifier"
+            redirect_uri = config.device_redirect_uri || raise "device flow has no redirect URI"
+            token = post_form(config.token_endpoint, {
+              "grant_type"    => "authorization_code",
+              "client_id"     => config.client_id,
+              "code"          => authorization_code,
+              "code_verifier" => verifier,
+              "redirect_uri"  => redirect_uri,
+            }.merge(config.extra_parameters))
+            return tokens_from(token)
+          end
+          next if response["error"]?.try(&.as_s?) == "authorization_pending"
+          raise "OAuth device authorization failed" if response["error"]?
+          # Codex returns 403/404 while the user has not completed login.
         end
       end
 
@@ -175,6 +209,19 @@ module Cri
         Process.run("xdg-open", args: [url], output: Process::Redirect::Close, error: Process::Redirect::Close)
       rescue
         # The URL was already reported to the client.
+      end
+
+      private def post_json(endpoint : String, payload : Hash(String, String), allow_error : Bool = false) : Hash(String, JSON::Any)
+        uri = URI.parse(endpoint)
+        client = HTTP::Client.new(uri)
+        client.connect_timeout = @timeout
+        client.read_timeout = @timeout
+        response = client.post(uri.request_target, headers: HTTP::Headers{"Content-Type" => "application/json"}, body: payload.to_json)
+        body = JSON.parse(response.body).as_h
+        raise "OAuth HTTP error (#{response.status_code})" unless response.success? || allow_error
+        body
+      ensure
+        client.try(&.close)
       end
 
       private def post_form(endpoint : String, form : Hash(String, String), allow_error : Bool = false) : Hash(String, JSON::Any)

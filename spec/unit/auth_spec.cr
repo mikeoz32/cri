@@ -73,6 +73,40 @@ describe Cri::Auth::Broker do
     server.try(&.close)
   end
 
+  it "runs the Codex-compatible device-code flow" do
+    server = HTTP::Server.new do |context|
+      if context.request.path.ends_with?("/usercode")
+        context.response.print(%({"device_auth_id":"device-1","user_code":"CODE-1","interval":0}))
+      elsif context.request.path == "/token"
+        context.response.print(%({"authorization_code":"auth-code","code_verifier":"verifier"}))
+      else
+        context.response.print(%({"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","expires_in":3600}))
+      end
+    end
+    address = server.bind_tcp("127.0.0.1", 0)
+    spawn { server.listen }
+    config = Cri::Auth::OAuthConfig.new(
+      "http://127.0.0.1:#{address.port}/oauth/token",
+      "client",
+      nil,
+      "http://127.0.0.1:#{address.port}/usercode",
+      ["openid"],
+      nil,
+      nil,
+      "openai_codex",
+      "http://127.0.0.1:#{address.port}/token",
+      "https://example.test/device",
+      "https://example.test/callback"
+    )
+    statuses = [] of String
+    tokens = Cri::Auth::OAuthClient.new.device_login(config) { |status| statuses << status }
+
+    tokens.access_token.should eq("access-1")
+    statuses.should contain("Code: CODE-1")
+  ensure
+    server.try(&.close)
+  end
+
   it "persists only cri-owned credentials and reloads them" do
     root = "/tmp/cri-auth-store-#{Process.pid}-#{Random.rand(1_000_000)}"
     path = File.join(root, "auth.json")

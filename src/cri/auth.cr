@@ -17,6 +17,10 @@ module Cri
       getter scopes : Array(String)
       getter redirect_uri : String?
       getter audience : String?
+      getter device_protocol : String?
+      getter device_token_endpoint : String?
+      getter device_verification_uri : String?
+      getter device_redirect_uri : String?
       getter extra_parameters : Hash(String, String)
 
       def initialize(
@@ -27,6 +31,10 @@ module Cri
         @scopes : Array(String) = [] of String,
         @redirect_uri : String? = nil,
         @audience : String? = nil,
+        @device_protocol : String? = nil,
+        @device_token_endpoint : String? = nil,
+        @device_verification_uri : String? = nil,
+        @device_redirect_uri : String? = nil,
         @extra_parameters : Hash(String, String) = {} of String => String,
       )
       end

@@ -177,6 +177,10 @@ module Cri
         scopes,
         config["redirect_uri"]?.try(&.as_s?),
         config["audience"]?.try(&.as_s?),
+        config["device_protocol"]?.try(&.as_s?),
+        config["device_token_endpoint"]?.try(&.as_s?),
+        config["device_verification_uri"]?.try(&.as_s?),
+        config["device_redirect_uri"]?.try(&.as_s?),
         extras
       )
     end
