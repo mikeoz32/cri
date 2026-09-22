@@ -32,7 +32,7 @@ module Cri
         client.list_models
       end
 
-      def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
+      protected def complete_stream_internal(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings) : AssistantResponse
         tool_call_parts = {} of Int32 => NamedTuple(id: String, name: String, arguments: String)
         content = String.build do |output|
           client.chat_stream(payload(messages, tools, settings, true)) do |chunk|
@@ -42,7 +42,7 @@ module Cri
             text = delta["content"]?.try(&.as_s?)
             if text
               output << text
-              on_text.call(text)
+              emit_stream_text(text)
             end
 
             delta["tool_calls"]?.try do |raw_calls|

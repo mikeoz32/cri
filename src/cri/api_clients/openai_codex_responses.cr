@@ -62,28 +62,16 @@ module Cri
         AssistantResponse.new(text.empty? ? nil : text, tool_calls)
       end
 
-      def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
+      protected def complete_stream_internal(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings) : AssistantResponse
         content = String::Builder.new
         tool_calls = [] of ToolCall
         tool_names = tool_name_map(tools)
         response = transport.stream(endpoint, headers, request_body(messages, tools, settings, true)) do |data|
-          unless data == "[DONE]"
-            event = JSON.parse(data)
-            case event["type"]?.try(&.as_s?)
-            when "response.output_text.delta"
-              delta = event["delta"]?.try(&.as_s?) || ""
-              content << delta
-              on_text.call(delta)
-            when "response.output_item.done", "response.function_call_arguments.done"
-              item = event["item"]? || event
-              if call = parse_tool_call(item, tool_names)
-                tool_calls << call unless tool_calls.any? { |existing| existing.id == call.id }
-              end
-            end
-          end
+          process_stream_event(data, content, tool_calls, tool_names) unless data == "[DONE]"
         end
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
-        AssistantResponse.new(content.to_s.empty? ? nil : content.to_s, tool_calls)
+        text = content.to_s
+        AssistantResponse.new(text.empty? ? nil : text, tool_calls)
       end
 
       def supports_streaming? : Bool
@@ -154,6 +142,22 @@ module Cri
             [message.to_api_json]
           end
         end
+      end
+
+      private def process_stream_event(data : String, content : String::Builder, tool_calls : Array(ToolCall), names : Hash(String, String)) : Nil
+        event = JSON.parse(data)
+        case event["type"]?.try(&.as_s?)
+        when "response.output_text.delta"
+          delta = event["delta"]?.try(&.as_s?) || ""
+          content << delta
+          emit_stream_text(delta)
+        when "response.output_item.done", "response.function_call_arguments.done"
+          item = event["item"]? || event
+          if call = parse_tool_call(item, names)
+            tool_calls << call unless tool_calls.any? { |existing| existing.id == call.id }
+          end
+        end
+        nil
       end
 
       private def tool_name_map(tools : Array(ToolSpec)) : Hash(String, String)

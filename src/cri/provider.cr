@@ -85,6 +85,28 @@ module Cri
     end
 
     def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
+      if client = @client
+        if client.supports_streaming?
+          chunks = Channel(String).new
+          done = Channel(AssistantResponse | Exception).new
+          spawn do
+            begin
+              done.send(client.stream_with_channel(messages, tools, settings, chunks))
+            rescue ex
+              done.send(ex)
+            end
+          end
+          loop do
+            select
+            when chunk = chunks.receive
+              on_text.call(chunk)
+            when result = done.receive
+              raise result if result.is_a?(Exception)
+              return result
+            end
+          end
+        end
+      end
       response = complete(messages, tools, settings)
       response.content.try { |content| on_text.call(content) }
       response
@@ -98,6 +120,8 @@ module Cri
   # API clients implement wire-level API semantics. They are not providers:
   # provider registrations supply identity/configuration and wrap one client.
   abstract class APIClient
+    @stream_channel : Channel(String)?
+
     def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
       complete(messages, tools, ModelSettings.new)
     end
@@ -105,9 +129,44 @@ module Cri
     abstract def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings) : AssistantResponse
 
     def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
+      chunks = Channel(String).new
+      done = Channel(AssistantResponse | Exception).new
+      spawn do
+        begin
+          done.send(stream_with_channel(messages, tools, settings, chunks))
+        rescue ex
+          done.send(ex)
+        end
+      end
+      loop do
+        select
+        when chunk = chunks.receive
+          on_text.call(chunk)
+        when result = done.receive
+          raise result if result.is_a?(Exception)
+          return result
+        end
+      end
+    end
+
+    def stream_with_channel(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings, channel : Channel(String)) : AssistantResponse
+      @stream_channel = channel
+      begin
+        complete_stream_internal(messages, tools, settings)
+      ensure
+        @stream_channel = nil
+      end
+    end
+
+    protected def complete_stream_internal(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings) : AssistantResponse
       response = complete(messages, tools, settings)
-      response.content.try { |content| on_text.call(content) }
+      response.content.try { |content| emit_stream_text(content) }
       response
+    end
+
+    protected def emit_stream_text(text : String) : Nil
+      @stream_channel.try(&.send(text))
+      nil
     end
 
     def supports_streaming? : Bool
