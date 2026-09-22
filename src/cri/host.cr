@@ -107,7 +107,7 @@ module Cri
     private def register_api_clients
       api_clients.register("openai") do |registration, secret|
         transport = transports.build(registration.transport_type)
-        Providers::OpenAI.new(registration.endpoint, registration.model, secret, transport: transport)
+        APIClients::OpenAICompatible.new(registration.endpoint, registration.model, secret, transport: transport)
       end
     end
 

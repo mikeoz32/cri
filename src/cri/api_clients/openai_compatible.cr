@@ -1,9 +1,9 @@
 module Cri
-  module Providers
+  module APIClients
     # OpenAI-compatible API client. Provider identity/configuration lives in
     # ProviderRegistration and ProviderRuntime.
-    class OpenAI < APIClient
-      getter client : OpenAIAPI::Client
+    class OpenAICompatible < APIClient
+      getter client : OpenAICompatibleHTTP
       getter model : String
 
       def initialize(
@@ -13,7 +13,7 @@ module Cri
         timeout : Time::Span = 120.seconds,
         transport : Cri::Transport = Cri::Transports::SSE.new,
       )
-        @client = OpenAIAPI::Client.new(endpoint, api_key, timeout, transport)
+        @client = OpenAICompatibleHTTP.new(endpoint, api_key, timeout, transport)
       end
 
       def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
