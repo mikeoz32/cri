@@ -87,7 +87,8 @@ module Cri
         raise "ChatGPT credential is not configured" unless credential
         json = JSON.parse(credential)
         access = json["access_token"]?.try(&.as_s) || raise "ChatGPT credential omitted access_token"
-        account = json["account_id"]?.try(&.as_s?) || account_id_from_jwt(access) || raise "ChatGPT credential omitted account id"
+        id_token = json["id_token"]?.try(&.as_s?)
+        account = json["account_id"]?.try(&.as_s?) || id_token.try { |token| account_id_from_jwt(token) } || account_id_from_jwt(access) || raise "ChatGPT credential omitted account id"
         {access, account}
       rescue JSON::ParseException
         raise "ChatGPT credential has invalid token data"

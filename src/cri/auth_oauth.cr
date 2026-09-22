@@ -12,13 +12,17 @@ module Cri
       access_token : String,
       refresh_token : String?,
       token_type : String,
-      expires_in : Int64? do
+      expires_in : Int64?,
+      id_token : String? = nil,
+      account_id : String? = nil do
       def to_json(json : JSON::Builder)
         json.object do
           json.field "access_token", access_token
           json.field "refresh_token", refresh_token if refresh_token
           json.field "token_type", token_type
           json.field "expires_in", expires_in if expires_in
+          json.field "id_token", id_token if id_token
+          json.field "account_id", account_id if account_id
         end
       end
     end
@@ -143,12 +147,27 @@ module Cri
 
       private def tokens_from(response : Hash(String, JSON::Any), fallback_refresh : String? = nil) : OAuthTokens
         access = response["access_token"]?.try(&.as_s) || raise "OAuth token response omitted access_token"
+        id_token = response["id_token"]?.try(&.as_s?)
+        account_id = id_token.try { |token| account_id_from_jwt(token) }
         OAuthTokens.new(
           access,
           response["refresh_token"]?.try(&.as_s?) || fallback_refresh,
           response["token_type"]?.try(&.as_s) || "Bearer",
-          response["expires_in"]?.try(&.as_i64)
+          response["expires_in"]?.try(&.as_i64),
+          id_token,
+          account_id
         )
+      end
+
+      private def account_id_from_jwt(token : String) : String?
+        parts = token.split('.')
+        return nil unless parts.size >= 2
+        padding = (4 - parts[1].size % 4) % 4
+        json = JSON.parse(Base64.decode_string(parts[1] + ("=" * padding)))
+        json["https://api.openai.com/auth"]?.try(&.as_h).try { |claims| claims["chatgpt_account_id"]?.try(&.as_s?) } ||
+          json["chatgpt_account_id"]?.try(&.as_s?)
+      rescue
+        nil
       end
 
       private def open_browser(url : String)
