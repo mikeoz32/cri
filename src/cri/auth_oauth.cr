@@ -43,8 +43,8 @@ module Cri
         device_code = device["device_code"]?.try(&.as_s) || raise "OAuth device response omitted device_code"
         user_code = device["user_code"]?.try(&.as_s) || raise "OAuth device response omitted user_code"
         verification_uri = device["verification_uri"]?.try(&.as_s) || device["verification_url"]?.try(&.as_s) || raise "OAuth device response omitted verification URI"
-        expires_in = device["expires_in"]?.try(&.as_i64) || 600_i64
-        interval = device["interval"]?.try(&.as_i64) || 5_i64
+        expires_in = integer_value(device["expires_in"]?, 600_i64)
+        interval = integer_value(device["interval"]?, 5_i64)
         on_status.call("Open #{verification_uri}")
         on_status.call("Code: #{user_code}")
 
@@ -81,7 +81,7 @@ module Cri
         device = post_json(endpoint, {"client_id" => config.client_id})
         device_id = device["device_auth_id"]?.try(&.as_s) || raise "device response omitted device_auth_id"
         user_code = device["user_code"]?.try(&.as_s) || raise "device response omitted user_code"
-        interval = device["interval"]?.try(&.as_i64) || device["interval"]?.try(&.as_s).try(&.to_i64) || 5_i64
+        interval = integer_value(device["interval"]?, 5_i64)
         verification = config.device_verification_uri || raise "device flow has no verification URI"
         on_status.call("Open #{verification}")
         on_status.call("Code: #{user_code}")
@@ -183,14 +183,27 @@ module Cri
         access = response["access_token"]?.try(&.as_s) || raise "OAuth token response omitted access_token"
         id_token = response["id_token"]?.try(&.as_s?)
         account_id = id_token.try { |token| account_id_from_jwt(token) }
+        expires = integer_value(response["expires_in"]?, 0_i64)
         OAuthTokens.new(
           access,
           response["refresh_token"]?.try(&.as_s?) || fallback_refresh,
           response["token_type"]?.try(&.as_s) || "Bearer",
-          response["expires_in"]?.try(&.as_i64),
+          expires == 0_i64 ? nil : expires,
           id_token,
           account_id
         )
+      end
+
+      private def integer_value(value : JSON::Any?, fallback : Int64) : Int64
+        return fallback unless value
+        case value.raw
+        when String
+          value.as_s.to_i64? || fallback
+        when Int64
+          value.as_i64
+        else
+          fallback
+        end
       end
 
       private def account_id_from_jwt(token : String) : String?
