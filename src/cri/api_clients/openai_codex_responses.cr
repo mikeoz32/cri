@@ -37,37 +37,53 @@ module Cri
         response = transport.request("POST", endpoint, headers, request_body(messages, tools, true))
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
         content = String::Builder.new
+        tool_calls = [] of ToolCall
+        tool_names = tool_name_map(tools)
         response.body.each_line do |line|
           data = line.strip
           if data.starts_with?("data: ")
             data = data[6..]
             unless data == "[DONE]"
               event = JSON.parse(data)
-              if event["type"]?.try(&.as_s?) == "response.output_text.delta"
+              case event["type"]?.try(&.as_s?)
+              when "response.output_text.delta"
                 content << (event["delta"]?.try(&.as_s?) || "")
+              when "response.output_item.done", "response.function_call_arguments.done"
+                item = event["item"]? || event
+                if call = parse_tool_call(item, tool_names)
+                  tool_calls << call unless tool_calls.any? { |existing| existing.id == call.id }
+                end
               end
             end
           end
         end
         text = content.to_s
-        return parse_response(JSON.parse(response.body)) if text.empty? && response.body.lstrip.starts_with?("{")
-        AssistantResponse.new(text.empty? ? nil : text)
+        return parse_response(JSON.parse(response.body), tool_names) if text.empty? && response.body.lstrip.starts_with?("{")
+        AssistantResponse.new(text.empty? ? nil : text, tool_calls)
       end
 
       def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
         content = String::Builder.new
+        tool_calls = [] of ToolCall
+        tool_names = tool_name_map(tools)
         response = transport.stream(endpoint, headers, request_body(messages, tools, true)) do |data|
           unless data == "[DONE]"
             event = JSON.parse(data)
-            if event["type"]?.try(&.as_s?) == "response.output_text.delta"
+            case event["type"]?.try(&.as_s?)
+            when "response.output_text.delta"
               delta = event["delta"]?.try(&.as_s?) || ""
               content << delta
               on_text.call(delta)
+            when "response.output_item.done", "response.function_call_arguments.done"
+              item = event["item"]? || event
+              if call = parse_tool_call(item, tool_names)
+                tool_calls << call unless tool_calls.any? { |existing| existing.id == call.id }
+              end
             end
           end
         end
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
-        AssistantResponse.new(content.to_s.empty? ? nil : content.to_s)
+        AssistantResponse.new(content.to_s.empty? ? nil : content.to_s, tool_calls)
       end
 
       def supports_streaming? : Bool
@@ -87,28 +103,66 @@ module Cri
       end
 
       private def request_body(messages : Array(Message), tools : Array(ToolSpec), stream : Bool) : String
-        {
+        body = {
           "model"  => model,
           "input"  => messages.map(&.to_api_json),
           "stream" => stream,
           "store"  => false,
-          "tools"  => tools.map { |tool| tool.to_json_any["function"] },
-        }.to_json
+        }
+        unless tools.empty?
+          body["tools"] = tools.map do |tool|
+            function = tool.to_json_any["function"]
+            JSON.parse({
+              "type"        => "function",
+              "name"        => codex_tool_name(function["name"].as_s),
+              "description" => function["description"],
+              "parameters"  => function["parameters"],
+            }.to_json)
+          end
+        end
+        body.to_json
       end
 
-      private def parse_response(json : JSON::Any) : AssistantResponse
+      private def tool_name_map(tools : Array(ToolSpec)) : Hash(String, String)
+        tools.to_h { |tool| {codex_tool_name(tool.name), tool.name} }
+      end
+
+      private def codex_tool_name(name : String) : String
+        name.gsub(/[^a-zA-Z0-9_-]/, "_")
+      end
+
+      private def parse_tool_call(item : JSON::Any, names : Hash(String, String)) : ToolCall?
+        return nil unless item["type"]?.try(&.as_s?) == "function_call" || (item["name"]? && item["arguments"]?)
+        name = item["name"]?.try(&.as_s?) || return nil
+        id = item["call_id"]?.try(&.as_s?) || item["id"]?.try(&.as_s?) || return nil
+        raw_arguments = item["arguments"]?.try(&.as_s?) || "{}"
+        arguments = begin
+          JSON.parse(raw_arguments)
+        rescue JSON::ParseException
+          JSON.parse("{}")
+        end
+        ToolCall.new(id, names[name]? || name, arguments)
+      end
+
+      private def parse_response(json : JSON::Any, names : Hash(String, String) = {} of String => String) : AssistantResponse
         output = json["output"]?.try(&.as_a) || [] of JSON::Any
+        tool_calls = [] of ToolCall
         text = String.build do |result|
           output.each do |item|
-            next unless item["type"]?.try(&.as_s?) == "message"
-            if content = item["content"]?.try(&.as_a)
-              content.each do |part|
-                result << part["text"].as_s if part["type"]?.try(&.as_s?) == "output_text"
+            if item["type"]?.try(&.as_s?) == "function_call"
+              if call = parse_tool_call(item, names)
+                tool_calls << call
+              end
+            elsif item["type"]?.try(&.as_s?) == "message"
+              if content = item["content"]?.try(&.as_a)
+                content.each do |part|
+                  result << part["text"].as_s if part["type"]?.try(&.as_s?) == "output_text"
+                end
               end
             end
           end
         end
-        AssistantResponse.new(text.empty? ? nil : text)
+        AssistantResponse.new(text.empty? ? nil : text, tool_calls)
       end
 
       private def parse_credential(credential : String?) : {String, String}

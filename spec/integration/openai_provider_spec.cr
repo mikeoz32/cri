@@ -18,6 +18,13 @@ describe Cri::APIClients::OpenAICompatible do
       context.request.headers["Authorization"].should eq("Bearer access-token")
       context.request.headers["chatgpt-account-id"].should eq("account-1")
       context.request.path.should eq("/backend-api/codex/responses")
+      body = JSON.parse(context.request.body.try(&.gets_to_end) || "{}")
+      body["stream"].as_bool.should be_true
+      if tools = body["tools"]?.try(&.as_a)
+        tools.size.should eq(1)
+        tools[0]["type"].as_s.should eq("function")
+        tools[0]["name"].as_s.should eq("demo_tool")
+      end
       context.response.print(%({"output":[{"type":"message","content":[{"type":"output_text","text":"hello from subscription"}]}]}))
     end
     address = server.bind_tcp("127.0.0.1", 0)
@@ -30,6 +37,17 @@ describe Cri::APIClients::OpenAICompatible do
 
     response = client.complete([Cri::Message.user("hello")], [] of Cri::ToolSpec)
     response.content.should eq("hello from subscription")
+
+    # Responses API tools must carry the type at the top level, unlike the
+    # Chat Completions function wrapper.
+    tool = Cri::ToolSpec.new("demo.tool", "Demo tool")
+    tool_client = Cri::APIClients::OpenAICodexResponses.new(
+      "http://127.0.0.1:#{address.port}/backend-api/codex/responses",
+      "gpt-5",
+      %({"access_token":"access-token","account_id":"account-1"})
+    )
+    tool_response = tool_client.complete([Cri::Message.user("hello")], [tool])
+    tool_response.content.should eq("hello from subscription")
   ensure
     server.try(&.close)
   end
