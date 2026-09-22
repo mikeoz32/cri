@@ -43,8 +43,14 @@ module Cri
     end
 
     def default_provider : Provider
+      provider_id = config.provider_id
+      if provider_id
+        return provider(provider_id)
+      end
       registration = providers.all.first? || raise "no provider registered; load a provider extension first"
       provider(registration.id)
+    rescue ex : Exception
+      raise "unable to select provider#{provider_id ? " '#{provider_id}'" : ""}: #{ex.message}"
     end
 
     def provider(provider_id : String, flow_id : String? = nil) : Provider

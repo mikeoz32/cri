@@ -51,6 +51,24 @@ describe Cri::Host do
     host.providers.find("extension/fixture/example").not_nil!.source.should eq("extension:fixture")
   end
 
+  it "selects the configured provider instead of the registration order" do
+    config = Cri::Config.new(Dir.current, [] of String, Cri::Permissions::GrantPolicy.default, "selected")
+    host = Cri::Host.new(config, auth: Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new))
+    ["first", "selected"].each do |id|
+      host.providers.register(Cri::ProviderRegistration.new(
+        id,
+        id,
+        "openai",
+        "https://example.test/v1/chat/completions",
+        "model",
+        "http+sse",
+        [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)]
+      ))
+    end
+
+    host.default_provider.registration.not_nil!.id.should eq("selected")
+  end
+
   it "registers provider definitions returned by an extension init hook" do
     host = Cri::Host.new(auth: Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new))
     effect = JSON.parse({
