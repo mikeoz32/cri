@@ -36,6 +36,8 @@ module Cri
           {true, extensions_text}
         when "auth"
           {true, auth_text(args)}
+        when "provider"
+          provider_command(args)
         when "session"
           {true, "session: #{agent.session.id}\nmessages: #{agent.session.messages.size}"}
         when "clear"
@@ -60,7 +62,28 @@ module Cri
         host.extensions.valid.map { |manifest| "#{manifest.name} #{manifest.version}" }.join("\n")
       end
 
-      private def auth_text(args : String) : String
+      private def provider_command(args : String) : Tuple(Bool, String)
+        if args.empty?
+          lines = ["Providers:"]
+          host.providers.all.each do |provider|
+            marker = agent.provider.registration.try(&.id) == provider.id ? "*" : " "
+            lines << "#{marker} #{provider.id} — #{provider.title} (#{provider.api_type})"
+          end
+          return {true, lines.join("\n")}
+        end
+
+        parts = args.split
+        provider_id = parts[0]
+        flow_id = parts[1]?
+        begin
+          @agent = host.agent(host.provider(provider_id, flow_id), agent.session)
+          {true, "selected provider #{provider_id}#{flow_id ? "/#{flow_id}" : ""}"}
+        rescue ex
+          {true, "provider selection failed: #{ex.message || ex.class.name}"}
+        end
+      end
+
+      private def auth_text(args : String)
         return "usage: /auth [status|providers]" unless args.empty? || args == "status" || args == "providers"
 
         lines = ["Authentication providers:"]

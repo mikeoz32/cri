@@ -21,6 +21,7 @@ module Cri
       register(Command.new("tools", "List available tools", source: "builtin"))
       register(Command.new("extensions", "List loaded extensions", source: "builtin"))
       register(Command.new("auth", "Show authentication providers", source: "builtin"))
+      register(Command.new("provider", "Select the active provider", source: "builtin"))
       register(Command.new("session", "Show current session", source: "builtin"))
       register(Command.new("clear", "Clear current session", source: "builtin"))
       register(Command.new("exit", "Exit cri", source: "builtin"))
