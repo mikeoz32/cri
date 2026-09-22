@@ -190,6 +190,9 @@ module Cri
           elsif !output.empty?
             ui.append_transcript("assistant: #{output}\n", "assistant")
           end
+          if command_mode && (raw == "session new" || raw.starts_with?("session restore "))
+            ui.restore_session(controller.session)
+          end
         rescue ex
           ui.append_transcript("error: #{ex.message || ex.class.name}\n", "error")
         ensure
