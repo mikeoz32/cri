@@ -105,7 +105,7 @@ module Cri
       private def request_body(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings, stream : Bool) : String
         body = JSON.parse({
           "model"  => model,
-          "input"  => messages.map(&.to_api_json),
+          "input"  => codex_input(messages),
           "stream" => stream,
           "store"  => false,
         }.to_json).as_h
@@ -126,6 +126,34 @@ module Cri
           end)
         end
         body.to_json
+      end
+
+      private def codex_input(messages : Array(Message)) : Array(JSON::Any)
+        messages.flat_map do |message|
+          if message.role == "tool"
+            [JSON.parse({
+              "type"    => "function_call_output",
+              "call_id" => message.tool_call_id || "",
+              "output"  => message.content || "",
+            }.to_json)]
+          elsif message.role == "assistant" && !message.tool_calls.empty?
+            items = [] of JSON::Any
+            if content = message.content
+              items << JSON.parse({"role" => "assistant", "content" => content}.to_json)
+            end
+            message.tool_calls.each do |call|
+              items << JSON.parse({
+                "type"      => "function_call",
+                "call_id"   => call.id,
+                "name"      => codex_tool_name(call.name),
+                "arguments" => call.arguments.to_json,
+              }.to_json)
+            end
+            items
+          else
+            [message.to_api_json]
+          end
+        end
       end
 
       private def tool_name_map(tools : Array(ToolSpec)) : Hash(String, String)
