@@ -32,20 +32,38 @@ module Cri
       end
 
       def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
-        response = transport.request("POST", endpoint, headers, request_body(messages, tools, false))
+        # Codex Responses requires streaming even for callers that request a
+        # collected response. Read the SSE body to completion here.
+        response = transport.request("POST", endpoint, headers, request_body(messages, tools, true))
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
-        parse_response(JSON.parse(response.body))
+        content = String::Builder.new
+        response.body.each_line do |line|
+          data = line.strip
+          if data.starts_with?("data: ")
+            data = data[6..]
+            unless data == "[DONE]"
+              event = JSON.parse(data)
+              if event["type"]?.try(&.as_s?) == "response.output_text.delta"
+                content << (event["delta"]?.try(&.as_s?) || "")
+              end
+            end
+          end
+        end
+        text = content.to_s
+        return parse_response(JSON.parse(response.body)) if text.empty? && response.body.lstrip.starts_with?("{")
+        AssistantResponse.new(text.empty? ? nil : text)
       end
 
       def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
         content = String::Builder.new
         response = transport.stream(endpoint, headers, request_body(messages, tools, true)) do |data|
-          next if data == "[DONE]"
-          event = JSON.parse(data)
-          if event["type"]?.try(&.as_s?) == "response.output_text.delta"
-            delta = event["delta"]?.try(&.as_s?) || ""
-            content << delta
-            on_text.call(delta)
+          unless data == "[DONE]"
+            event = JSON.parse(data)
+            if event["type"]?.try(&.as_s?) == "response.output_text.delta"
+              delta = event["delta"]?.try(&.as_s?) || ""
+              content << delta
+              on_text.call(delta)
+            end
           end
         end
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
