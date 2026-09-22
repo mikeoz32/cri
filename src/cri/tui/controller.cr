@@ -15,7 +15,6 @@ module Cri
         else
           @agent = nil
         end
-        @sessions.save(@session)
       end
 
       def submit(input : String) : Tuple(Bool, String)
