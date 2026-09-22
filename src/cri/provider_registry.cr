@@ -22,6 +22,10 @@ module Cri
       @transport_type : String? = nil,
     )
     end
+
+    def display_id : String
+      "#{provider_id.split('/').last}/#{model}"
+    end
   end
 
   class ProviderRegistration
@@ -112,7 +116,10 @@ module Cri
     end
 
     def find_model(id : String) : ModelRef?
-      models.find { |model| model.id == id }
+      exact = models.find { |model| model.id == id }
+      return exact if exact
+      matches = models.select { |model| model.display_id == id || model.id.ends_with?("/#{id}") }
+      matches.size == 1 ? matches.first : nil
     end
 
     def register_extension_effect(effect : JSON::Any, extension_name : String)

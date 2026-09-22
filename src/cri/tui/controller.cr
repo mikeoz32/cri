@@ -97,7 +97,7 @@ module Cri
           lines = ["Models:"]
           host.providers.models.each do |model|
             marker = session.current_model.try(&.id) == model.id ? "*" : " "
-            lines << "#{marker} #{model.id} — #{model.title}"
+            lines << "#{marker} #{model.display_id} — #{model.title}"
           end
           return {true, lines.join("\n")}
         end
@@ -107,7 +107,7 @@ module Cri
           @agent = host.agent(host.model(model_id), session)
           model = host.providers.find_model(model_id).not_nil!
           session.select_model(model)
-          {true, "selected model #{model.id}"}
+          {true, "selected model #{model.display_id}"}
         rescue ex
           {true, "model selection failed: #{ex.message || ex.class.name}"}
         end
