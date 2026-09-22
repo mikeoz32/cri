@@ -79,7 +79,7 @@ module Cri
       client.not_nil!.complete(messages, tools)
     end
 
-    def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new) : AssistantResponse
+    def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings) : AssistantResponse
       return complete(messages, tools) if settings.empty?
       client.not_nil!.complete(messages, tools, settings)
     end
@@ -102,7 +102,7 @@ module Cri
       complete(messages, tools, ModelSettings.new)
     end
 
-    abstract def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new) : AssistantResponse
+    abstract def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings) : AssistantResponse
 
     def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
       response = complete(messages, tools, settings)
