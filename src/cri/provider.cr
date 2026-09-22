@@ -74,5 +74,9 @@ module Cri
 
     def validate_credentials : Nil
     end
+
+    def list_models : Array(String)
+      [] of String
+    end
   end
 end

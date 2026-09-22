@@ -28,6 +28,10 @@ module Cri
         client.validate_api_key
       end
 
+      def list_models : Array(String)
+        client.list_models
+      end
+
       def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
         tool_call_parts = {} of Int32 => NamedTuple(id: String, name: String, arguments: String)
         content = String.build do |output|

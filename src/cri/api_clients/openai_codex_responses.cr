@@ -21,6 +21,15 @@ module Cri
         @access_token, @account_id = parse_credential(credential)
       end
 
+      def list_models : Array(String)
+        models_endpoint = URI.parse(endpoint.to_s.sub(/\/backend-api\/codex\/responses\z/, "/backend-api/models"))
+        response = transport.request("GET", models_endpoint, headers, nil)
+        raise "ChatGPT model discovery failed (#{response.status})" unless response.status.in?(200...300)
+        JSON.parse(response.body)["models"].as_a.compact_map do |entry|
+          entry["slug"]?.try(&.as_s?)
+        end
+      end
+
       def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
         response = transport.request("POST", endpoint, headers, request_body(messages, tools, false))
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)

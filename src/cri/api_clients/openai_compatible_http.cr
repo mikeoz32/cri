@@ -24,9 +24,16 @@ module Cri
       end
 
       def validate_api_key : Nil
+        list_models
+      end
+
+      def list_models : Array(String)
         validation_endpoint = URI.parse(endpoint.to_s.sub(/\/chat\/completions\z/, "/models"))
         response = transport.request("GET", validation_endpoint, authorization_headers, nil)
         raise ApiError.new(response.status, response.body) unless response.status.in?(200...300)
+        JSON.parse(response.body)["data"].as_a.compact_map do |entry|
+          entry["id"]?.try(&.as_s?)
+        end
       end
 
       def chat_stream(payload : JSON::Any, &block : JSON::Any -> Nil) : Nil

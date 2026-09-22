@@ -65,6 +65,33 @@ module Cri
       provider(model_ref.provider_id, model_ref.auth_flow_id, model_ref)
     end
 
+    def refresh_models(provider_id : String? = nil) : Array(ModelRef)
+      targets = provider_id ? [providers.find(provider_id) || raise("unknown provider: #{provider_id}")] : providers.all
+      targets.each do |registration|
+        discovered = [] of ModelRef
+        registration.auth_flows.each do |flow|
+          ref = auth.existing(registration.id, flow.id)
+          next unless ref
+          effective = registration.for_flow(flow)
+          client = api_clients.build(effective, auth.secret(ref))
+          client.list_models.each do |model_id|
+            discovered << ModelRef.new(
+              "#{registration.id}/#{flow.id}/#{model_id}",
+              registration.id,
+              model_id,
+              model_id,
+              flow.id,
+              effective.api_type,
+              effective.endpoint,
+              effective.transport_type
+            )
+          end
+        end
+        registration.replace_models(discovered)
+      end
+      providers.models
+    end
+
     def provider(provider_id : String, flow_id : String? = nil, model_ref : ModelRef? = nil) : Provider
       registration = providers.find(provider_id) || raise "unknown provider: #{provider_id}"
       provider_id = registration.id

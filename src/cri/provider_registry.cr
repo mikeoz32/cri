@@ -24,7 +24,11 @@ module Cri
     end
 
     def display_id : String
-      "#{provider_id.split('/').last}/#{model}"
+      provider = provider_id.split('/').last
+      if flow = auth_flow_id
+        return "#{provider}/#{flow}/#{model}" unless flow == "api-key"
+      end
+      "#{provider}/#{model}"
     end
   end
 
@@ -54,7 +58,12 @@ module Cri
 
     def model_refs : Array(ModelRef)
       return models unless models.empty?
+      return [] of ModelRef if model.empty?
       [ModelRef.new("#{id}/#{model}", id, model, model, auth_flows.first?.try(&.id), api_type, endpoint, transport_type)]
+    end
+
+    def replace_models(models : Array(ModelRef)) : Nil
+      @models = models
     end
 
     def auth_flow(id : String) : Auth::Flow

@@ -93,9 +93,20 @@ module Cri
       end
 
       private def model_command(args : String) : Tuple(Bool, String)
+        if args.split.first? == "refresh"
+          begin
+            provider_id = args.split[1]?
+            models = host.refresh_models(provider_id)
+            return {true, "discovered #{models.size} model(s)"}
+          rescue ex : Exception
+            return {false, "model discovery failed: #{ex.message || ex.class.name}"}
+          end
+        end
         if args.empty?
           lines = ["Models:"]
-          host.providers.models.each do |model|
+          models = host.providers.models
+          lines << "(none; use :model refresh after authentication)" if models.empty?
+          models.each do |model|
             marker = session.current_model.try(&.id) == model.id ? "*" : " "
             lines << "#{marker} #{model.display_id} — #{model.title}"
           end
