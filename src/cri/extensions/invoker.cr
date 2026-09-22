@@ -29,7 +29,7 @@ module Cri
       end
 
       private def default_runtime : Wasm::Runtime
-        {% if flag?(:wasm3) %}
+        {% if flag?(:wasm3) || flag?(:Wasm3) %}
           Wasm::Wasm3Runtime.new
         {% else %}
           Wasm::UnimplementedRuntime.new

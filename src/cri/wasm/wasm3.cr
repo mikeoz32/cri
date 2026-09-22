@@ -1,4 +1,4 @@
-{% if flag?(:wasm3) %}
+{% if flag?(:wasm3) || flag?(:Wasm3) %}
   @[Link("m3")]
   lib LibWasm3
     fun m3_NewEnvironment : Pointer(Void)

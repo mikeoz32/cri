@@ -72,14 +72,14 @@ module Cri
         return false
       end
 
-      {% if flag?(:wasm3) %}
+      {% if flag?(:wasm3) || flag?(:Wasm3) %}
         request = Wasm::RequestEnvelope.new("tool", tool.name, input)
         handler = Effects::Handler.new(config_grants(manifest.name), manifest.permissions)
         response = Wasm::Wasm3Runtime.new.run(manifest, request, handler)
         puts response.to_json
         response.ok
       {% else %}
-        STDERR.puts "plugin test requires cri built with -Dwasm3"
+        STDERR.puts "plugin test requires cri built with -Dwasm3 (or -DWasm3)"
         false
       {% end %}
     end

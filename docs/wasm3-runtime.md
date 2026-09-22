@@ -6,6 +6,7 @@ Build with a native wasm3 library installed:
 
 ```sh
 crystal build -Dwasm3 src/cri.cr -o cri
+# `-DWasm3` is accepted as an equivalent flag.
 # Ensure the wasm3 library is discoverable, for example:
 LIBRARY_PATH=/path/to/wasm3/build/source crystal build -Dwasm3 src/cri.cr -o cri
 ```

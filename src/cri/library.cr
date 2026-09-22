@@ -30,7 +30,7 @@ require "./effects/handler"
 require "./wasm/abi"
 require "./wasm/runtime"
 require "./wasm/conformance"
-{% if flag?(:wasm3) %}
+{% if flag?(:wasm3) || flag?(:Wasm3) %}
   require "./wasm/wasm3"
   require "./wasm/wasm3_runtime"
 {% end %}

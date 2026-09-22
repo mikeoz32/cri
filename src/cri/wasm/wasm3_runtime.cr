@@ -1,4 +1,4 @@
-{% if flag?(:wasm3) %}
+{% if flag?(:wasm3) || flag?(:Wasm3) %}
   module Cri
     module Wasm
       # Minimal wasm3 adapter for the current JSON ABI and effect loop.

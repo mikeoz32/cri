@@ -2,10 +2,10 @@ module Cri
   module Tui
     class Controller
       getter host : Host
-      getter agent : Agent
+      getter agent : Agent?
 
       def initialize(@host : Host, provider : Provider? = nil)
-        @agent = host.agent(provider || host.default_provider)
+        @agent = provider.try { |selected| host.agent(selected) }
       end
 
       def submit(input : String) : Tuple(Bool, String)
@@ -16,8 +16,11 @@ module Cri
         if input.starts_with?("/")
           dispatch_command(input[1..-1])
         else
-          {true, agent.run_turn(input) { |chunk| on_text.call(chunk) }}
+          active = ensure_agent
+          {true, active.run_turn(input) { |chunk| on_text.call(chunk) }}
         end
+      rescue ex
+        {true, "provider unavailable: #{ex.message || ex.class.name}"}
       end
 
       private def dispatch_command(raw : String) : Tuple(Bool, String)
@@ -39,13 +42,25 @@ module Cri
         when "provider"
           provider_command(args)
         when "session"
-          {true, "session: #{agent.session.id}\nmessages: #{agent.session.messages.size}"}
+          if active = agent
+            {true, "session: #{active.session.id}\nmessages: #{active.session.messages.size}"}
+          else
+            {true, "no active provider"}
+          end
         when "clear"
-          agent.session.clear
-          {true, "session cleared"}
+          if active = agent
+            active.session.clear
+            {true, "session cleared"}
+          else
+            {true, "no active provider"}
+          end
         else
           {true, execute_extension_command(name, args)}
         end
+      end
+
+      private def ensure_agent : Agent
+        @agent ||= host.agent(host.default_provider)
       end
 
       private def help_text : String
@@ -66,7 +81,7 @@ module Cri
         if args.empty?
           lines = ["Providers:"]
           host.providers.all.each do |provider|
-            marker = agent.provider.registration.try(&.id) == provider.id ? "*" : " "
+            marker = agent.try(&.provider.registration).try(&.id) == provider.id ? "*" : " "
             lines << "#{marker} #{provider.id} — #{provider.title} (#{provider.api_type})"
           end
           return {true, lines.join("\n")}
@@ -76,7 +91,12 @@ module Cri
         provider_id = parts[0]
         flow_id = parts[1]?
         begin
-          @agent = host.agent(host.provider(provider_id, flow_id), agent.session)
+          selected = host.provider(provider_id, flow_id)
+          @agent = if session = agent.try(&.session)
+                     host.agent(selected, session)
+                   else
+                     host.agent(selected)
+                   end
           {true, "selected provider #{provider_id}#{flow_id ? "/#{flow_id}" : ""}"}
         rescue ex
           {true, "provider selection failed: #{ex.message || ex.class.name}"}
