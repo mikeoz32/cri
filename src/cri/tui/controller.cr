@@ -108,7 +108,7 @@ module Cri
           lines << "(none; use :model refresh after authentication)" if models.empty?
           models.each do |model|
             marker = session.current_model.try(&.id) == model.id ? "*" : " "
-            lines << "#{marker} #{model.display_id} — #{model.title}"
+            lines << "#{marker} #{host.providers.display_id(model)} — #{model.title}"
           end
           return {true, lines.join("\n")}
         end
@@ -118,7 +118,7 @@ module Cri
           @agent = host.agent(host.model(model_id), session)
           model = host.providers.find_model(model_id).not_nil!
           session.select_model(model)
-          {true, "selected model #{model.display_id}"}
+          {true, "selected model #{host.providers.display_id(model)}"}
         rescue ex
           {true, "model selection failed: #{ex.message || ex.class.name}"}
         end

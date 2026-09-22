@@ -24,11 +24,7 @@ module Cri
     end
 
     def display_id : String
-      provider = provider_id.split('/').last
-      if flow = auth_flow_id
-        return "#{provider}/#{flow}/#{model}" unless flow == "api-key"
-      end
-      "#{provider}/#{model}"
+      "#{provider_id.split('/').last}/#{model}"
     end
   end
 
@@ -127,8 +123,16 @@ module Cri
     def find_model(id : String) : ModelRef?
       exact = models.find { |model| model.id == id }
       return exact if exact
-      matches = models.select { |model| model.display_id == id || model.id.ends_with?("/#{id}") }
+      matches = models.select { |model| display_id(model) == id || model.id.ends_with?("/#{id}") }
       matches.size == 1 ? matches.first : nil
+    end
+
+    def display_id(model : ModelRef) : String
+      short = model.display_id
+      duplicates = models.select { |candidate| candidate.display_id == short }
+      return short if duplicates.size <= 1
+      flow = model.auth_flow_id || "default"
+      "#{model.provider_id.split('/').last}/#{flow}/#{model.model}"
     end
 
     def register_extension_effect(effect : JSON::Any, extension_name : String)
