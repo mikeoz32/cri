@@ -12,6 +12,7 @@ module Cri
       getter ui_owner : String?
       getter capabilities : API::CapabilityBroker
       getter actor : String
+      getter provider_sink : Proc(JSON::Any, Nil)?
 
       def initialize(
         @grants : Permissions::GrantSet,
@@ -23,6 +24,7 @@ module Cri
         @ui_owner : String? = nil,
         @capabilities : API::CapabilityBroker = API::CapabilityBroker.deny_all,
         @actor : String = "host",
+        @provider_sink : Proc(JSON::Any, Nil)? = nil,
       )
       end
 
@@ -53,6 +55,10 @@ module Cri
           handle_panel_focus(type, effect)
         when "ui.status_update"
           Result.new(type, true, JSON.parse({"updated" => true}.to_json))
+        when "host.provider.register"
+          sink = provider_sink || raise "provider registration is not available in this host context"
+          sink.call(effect)
+          Result.new(type, true, JSON.parse({"registered" => true}.to_json))
         else
           Result.new(type, false, nil, "unsupported effect type")
         end

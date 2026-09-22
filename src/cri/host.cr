@@ -129,11 +129,17 @@ module Cri
       input = JSON.parse({"event" => "host.init"}.to_json)
       extensions.enabled(config.grants).each do |manifest|
         manifest.hooks.select { |hook| hook.name == "init" }.each do |hook|
-          response = invoker.invoke(manifest, "hook", hook.name, input)
+          response = invoker.invoke(
+            manifest,
+            "hook",
+            hook.name,
+            input,
+            provider_sink: ->(effect : JSON::Any) {
+              providers.register_extension_effect(effect, manifest.name)
+              nil
+            }
+          )
           raise "extension #{manifest.name} init failed: #{response.error}" unless response.ok
-          response.effects.each do |effect|
-            providers.register_extension_effect(effect, manifest.name)
-          end
         end
       end
     end

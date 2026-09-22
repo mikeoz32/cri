@@ -12,7 +12,7 @@ module Cri
         !runtime.is_a?(Wasm::UnimplementedRuntime)
       end
 
-      def invoke(manifest : Manifest, kind : String, name : String, input : JSON::Any, ui_sink : Effects::UiSink? = nil) : Wasm::ResponseEnvelope
+      def invoke(manifest : Manifest, kind : String, name : String, input : JSON::Any, ui_sink : Effects::UiSink? = nil, provider_sink : Proc(JSON::Any, Nil)? = nil) : Wasm::ResponseEnvelope
         return failure("extension is disabled: #{manifest.name}") unless grants.enabled?(manifest.name)
 
         contribution = manifest.all_contributions.find { |item| item.kind == kind && item.name == name }
@@ -24,7 +24,7 @@ module Cri
           input,
           Wasm::CallContext.new(tui: true)
         )
-        handler = Effects::Handler.new(grants.for_extension(manifest.name), manifest.permissions, ui_sink: ui_sink, ui_owner: manifest.name, capabilities: capabilities, actor: manifest.name)
+        handler = Effects::Handler.new(grants.for_extension(manifest.name), manifest.permissions, ui_sink: ui_sink, ui_owner: manifest.name, capabilities: capabilities, actor: manifest.name, provider_sink: provider_sink)
         runtime.run(manifest, request, handler)
       end
 
