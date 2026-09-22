@@ -126,6 +126,25 @@ module Cri
         transcript.highlight(start, transcript.content.size.to_i32, group.not_nil!) if group && !text.empty?
       end
 
+      def restore_session(session : Session)
+        transcript.clear
+        session.messages.each do |message|
+          case message.role
+          when "user"
+            append_transcript("> #{message.content || ""}\n", "user")
+          when "assistant"
+            if content = message.content
+              append_transcript("assistant: #{content}\n", "assistant") unless content.empty?
+            end
+            message.tool_calls.each do |call|
+              append_transcript("assistant: [tool call #{call.name}]\n", "assistant")
+            end
+          when "tool"
+            append_transcript("tool: #{message.content || ""}\n", "tool")
+          end
+        end
+      end
+
       def set_activity(text : String, group : String? = nil)
         activity.replace(text)
         activity.highlight(0, activity.content.size.to_i32, group.not_nil!) if group && !text.empty?

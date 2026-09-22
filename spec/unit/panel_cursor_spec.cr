@@ -21,6 +21,18 @@ describe "Panel cursor rendering" do
   end
 end
 
+describe "Panel wrapping" do
+  it "wraps long transcript lines to the panel width" do
+    ui = Cri::Tui::UiRuntime.new
+    ui.transcript.append("abcdefghijklmno")
+    panel = ui.workspace.panels.get("transcript")
+    lines = panel.render_lines(ui.buffers, 4, 5)
+
+    lines.size.should eq(3)
+    lines.all? { |line| line.gsub(/\e\\[[0-9;]*m/, "").size <= 5 }.should be_true
+  end
+end
+
 describe Cri::Tui::TextBuffer do
   it "moves its cursor vertically without changing read-only status" do
     buffer = Cri::Tui::TextBuffer.new("notes", "one\ntwo\nthree")

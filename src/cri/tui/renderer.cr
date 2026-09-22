@@ -82,13 +82,14 @@ module Cri
           return {geometry.row, {geometry.column + panel.prompt.size + buffer.cursor, width}.min}
         end
 
-        cursor_line, cursor_column = buffer.cursor_line_column
+        _cursor_line, cursor_column = buffer.cursor_line_column
         content_height = {geometry.height - 1, 0}.max
-        panel.ensure_cursor_visible(buffers, content_height)
-        start = panel.view_start(buffers, content_height)
-        return nil unless cursor_line >= start && cursor_line < start + content_height
+        panel.ensure_cursor_visible(buffers, content_height, geometry.width)
+        start = panel.view_start(buffers, content_height, geometry.width)
+        visual_line = panel.cursor_visual_line(buffers, geometry.width)
+        return nil unless visual_line >= start && visual_line < start + content_height
         {
-          geometry.row + 1 + cursor_line - start,
+          geometry.row + 1 + visual_line - start,
           {geometry.column + cursor_column, geometry.column + geometry.width - 1}.min,
         }
       end

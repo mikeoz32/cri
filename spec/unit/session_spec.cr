@@ -26,6 +26,10 @@ describe Cri::SessionStore do
     loaded.current_model.not_nil!.auth_flow_id.should eq("chatgpt-device")
     loaded.settings.reasoning_effort.should eq("high")
     loaded.messages.last.content.should eq("remember this")
+
+    ui = Cri::Tui::UiRuntime.new
+    ui.restore_session(loaded)
+    ui.transcript.content.should contain("> remember this")
   ensure
     FileUtils.rm_rf(workspace) if workspace
   end

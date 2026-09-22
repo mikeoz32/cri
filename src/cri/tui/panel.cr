@@ -25,46 +25,56 @@ module Cri
         @last_cursor_revision = 0_i64
       end
 
-      def ensure_cursor_visible(buffers : BufferStore, height : Int32)
+      def ensure_cursor_visible(buffers : BufferStore, height : Int32, width : Int32 = 80)
         buffer = buffers.get(buffer_id).as?(TextBuffer)
         return unless buffer
         return if @last_cursor_revision == buffer.cursor_revision
         @last_cursor_revision = buffer.cursor_revision
         available = {height, 1}.max
-        line, _ = buffer.cursor_line_column
-        max_scroll = {buffer.lines.size - available, 0}.max
+        visual = visual_lines(buffers, width)
+        return if visual.empty?
+        cursor = cursor_visual_line(buffers, width)
+        max_scroll = {visual.size - available, 0}.max
         start = {max_scroll - scroll, 0}.max
 
-        if line < start
-          @scroll = max_scroll - line
-        elsif line >= start + available
-          target_start = line - available + 1
+        if cursor < start
+          @scroll = max_scroll - cursor
+        elsif cursor >= start + available
+          target_start = cursor - available + 1
           @scroll = max_scroll - target_start
         end
         @scroll = { {scroll, 0}.max, max_scroll }.min
       end
 
-      def view_start(buffers : BufferStore, height : Int32) : Int32
+      def view_start(buffers : BufferStore, height : Int32, width : Int32 = 80) : Int32
         available = {height, 0}.max
-        source = buffers.get(buffer_id).lines
-        max_scroll = {source.size - available, 0}.max
-        {max_scroll - scroll, 0}.max
+        buffer = buffers.get(buffer_id)
+        source_max = {buffer.lines.size - available, 0}.max
+        source_start = {source_max - scroll, 0}.max
+        visual = visual_lines(buffers, width)
+        visual.index { |entry| entry[2] == source_start && entry[3] == 0 } || visual.size
+      end
+
+      def cursor_visual_line(buffers : BufferStore, width : Int32) : Int32
+        buffer = buffers.get(buffer_id).as?(TextBuffer)
+        return 0 unless buffer
+        cursor_line, cursor_column = buffer.cursor_line_column
+        visual = visual_lines(buffers, width)
+        index = visual.index { |entry| entry[2] == cursor_line && cursor_column >= entry[3] && cursor_column <= entry[3] + entry[0].size }
+        index || {visual.size - 1, 0}.max
       end
 
       def render_lines(buffers : BufferStore, height : Int32, width : Int32, theme : Theme? = nil) : Array(String)
         available = {height, 0}.max
         buffer = buffers.get(buffer_id)
-        ensure_cursor_visible(buffers, available)
-        source = buffer.lines
-        start = view_start(buffers, available)
-        offset = source.first(start).sum { |line| line.size + 1 }
+        ensure_cursor_visible(buffers, available, width)
+        source = visual_lines(buffers, width)
+        start = view_start(buffers, available, width)
         text_buffer = buffer.as?(TextBuffer)
         regions = text_buffer.try(&.highlights) || [] of Highlight
         selection = text_buffer.try(&.selection_range)
-        source[start, available].map do |line|
-          rendered = HighlightRenderer.line(line, offset, regions, width, theme, selection)
-          offset += line.size + 1
-          rendered
+        source[start, available].map do |entry|
+          HighlightRenderer.line(entry[0], entry[1], regions, width, theme, selection)
         end
       end
 
@@ -75,6 +85,30 @@ module Cri
 
       def page_size : Int32
         10
+      end
+
+      # Entries contain the wrapped text, its absolute highlight offset, the
+      # source line, and the source-column where the wrapped segment starts.
+      private def visual_lines(buffers : BufferStore, width : Int32) : Array(Tuple(String, Int32, Int32, Int32))
+        limit = {width, 1}.max
+        buffer = buffers.get(buffer_id)
+        entries = [] of Tuple(String, Int32, Int32, Int32)
+        offset = 0_i32
+        buffer.lines.each_with_index do |line, source_line|
+          chars = line.chars
+          if chars.empty?
+            entries << {"", offset, source_line.to_i32, 0_i32}
+          else
+            start = 0
+            while start < chars.size
+              finish = {start + limit, chars.size}.min
+              entries << {chars[start...finish].join, offset + start, source_line.to_i32, start.to_i32}
+              start = finish
+            end
+          end
+          offset += line.size + 1
+        end
+        entries
       end
 
       private def emit(name : String, data : Hash(String, Int32))

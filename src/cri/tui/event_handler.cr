@@ -13,6 +13,7 @@ module Cri
         @history_index = 0
         @submission_running = false
         @auth_prompt = nil
+        ui.restore_session(controller.session)
       end
 
       def handle(event : KeyEvent, &refresh : -> Nil) : Bool
