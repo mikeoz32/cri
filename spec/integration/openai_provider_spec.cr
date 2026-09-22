@@ -13,6 +13,27 @@ describe Cri::APIClients::OpenAICompatible do
     json["function"]["name"].as_s.should eq("demo.tool")
   end
 
+  it "uses ChatGPT credentials with the Codex responses API client" do
+    server = HTTP::Server.new do |context|
+      context.request.headers["Authorization"].should eq("Bearer access-token")
+      context.request.headers["chatgpt-account-id"].should eq("account-1")
+      context.request.path.should eq("/backend-api/codex/responses")
+      context.response.print(%({"output":[{"type":"message","content":[{"type":"output_text","text":"hello from subscription"}]}]}))
+    end
+    address = server.bind_tcp("127.0.0.1", 0)
+    spawn { server.listen }
+    client = Cri::APIClients::OpenAICodexResponses.new(
+      "http://127.0.0.1:#{address.port}/backend-api/codex/responses",
+      "gpt-5",
+      %({"access_token":"access-token","account_id":"account-1"})
+    )
+
+    response = client.complete([Cri::Message.user("hello")], [] of Cri::ToolSpec)
+    response.content.should eq("hello from subscription")
+  ensure
+    server.try(&.close)
+  end
+
   it "validates an API key through the models endpoint" do
     server = HTTP::Server.new do |context|
       context.request.path.should eq("/v1/models")

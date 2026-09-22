@@ -48,14 +48,15 @@ module Cri
         return provider(provider_id)
       end
       registration = providers.all.first? || raise "no provider registered; load a provider extension first"
-      provider(registration.id)
+      provider(registration.id, config.auth_flow_id)
     rescue ex : Exception
       raise "unable to select provider#{provider_id ? " '#{provider_id}'" : ""}: #{ex.message}"
     end
 
     def provider(provider_id : String, flow_id : String? = nil) : Provider
       registration = providers.find(provider_id) || raise "unknown provider: #{provider_id}"
-      flow = if selected_flow_id = flow_id
+      selected_flow_id = flow_id || config.auth_flow_id
+      flow = if selected_flow_id
                registration.auth_flow(selected_flow_id)
              else
                registration.auth_flows.first? || raise "provider has no auth flows: #{provider_id}"
@@ -66,8 +67,9 @@ module Cri
           ref = auth.import_env(provider_id, flow.id, env_name)
         end
       end
+      effective = registration.for_flow(flow)
       secret = ref.try { |credential| auth.secret(credential) }
-      Provider.new(registration, api_clients.build(registration, secret))
+      Provider.new(effective, api_clients.build(effective, secret))
     end
 
     def login_api_token(provider_id : String, flow_id : String, secret : String) : Auth::CredentialRef
@@ -77,8 +79,9 @@ module Cri
       raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
       raise "auth flow is not an API token flow" unless flow.not_nil!.kind == Auth::FlowKind::ApiToken
 
+      effective = provider.not_nil!.for_flow(flow.not_nil!)
       if flow.not_nil!.metadata["validate"]? == "api_client" && auth.store.persistent?
-        api_clients.validate(provider.not_nil!, secret)
+        api_clients.validate(effective, secret)
       end
 
       auth.import_api_token(provider_id, flow_id, secret)
@@ -114,6 +117,10 @@ module Cri
       api_clients.register("openai") do |registration, secret|
         transport = transports.build(registration.transport_type)
         APIClients::OpenAICompatible.new(registration.endpoint, registration.model, secret, transport: transport)
+      end
+      api_clients.register("openai-codex-responses") do |registration, secret|
+        transport = transports.build(registration.transport_type)
+        APIClients::OpenAICodexResponses.new(registration.endpoint, registration.model, secret, transport)
       end
     end
 

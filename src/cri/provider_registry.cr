@@ -27,6 +27,19 @@ module Cri
       auth_flows.find { |flow| flow.id == id } || raise "unknown auth flow: #{id}"
     end
 
+    def for_flow(flow : Auth::Flow) : self
+      self.class.new(
+        id,
+        title,
+        flow.metadata["api_type"]? || api_type,
+        flow.metadata["endpoint"]? || endpoint,
+        flow.metadata["model"]? || model,
+        flow.metadata["transport"]? || transport_type,
+        [flow],
+        source
+      )
+    end
+
     def to_auth_provider : Auth::Provider
       Auth::Provider.new(id, title, auth_flows, source)
     end

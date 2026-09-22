@@ -1,0 +1,108 @@
+require "base64"
+require "json"
+require "random/secure"
+
+module Cri
+  module APIClients
+    class OpenAICodexResponses < APIClient
+      getter endpoint : URI
+      getter model : String
+      getter transport : Transport
+      @access_token : String
+      @account_id : String
+
+      def initialize(
+        endpoint : String,
+        @model : String,
+        credential : String?,
+        @transport : Transport = Transports::SSE.new,
+      )
+        @endpoint = URI.parse(endpoint)
+        @access_token, @account_id = parse_credential(credential)
+      end
+
+      def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
+        response = transport.request("POST", endpoint, headers, request_body(messages, tools, false))
+        raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
+        parse_response(JSON.parse(response.body))
+      end
+
+      def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
+        content = String::Builder.new
+        response = transport.stream(endpoint, headers, request_body(messages, tools, true)) do |data|
+          next if data == "[DONE]"
+          event = JSON.parse(data)
+          if event["type"]?.try(&.as_s?) == "response.output_text.delta"
+            delta = event["delta"]?.try(&.as_s?) || ""
+            content << delta
+            on_text.call(delta)
+          end
+        end
+        raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
+        AssistantResponse.new(content.to_s.empty? ? nil : content.to_s)
+      end
+
+      def supports_streaming? : Bool
+        true
+      end
+
+      private def headers : HTTP::Headers
+        HTTP::Headers{
+          "Authorization"      => "Bearer #{@access_token}",
+          "chatgpt-account-id" => @account_id,
+          "originator"         => "cri",
+          "OpenAI-Beta"        => "responses=experimental",
+          "Accept"             => "text/event-stream",
+          "Content-Type"       => "application/json",
+          "User-Agent"         => "cri",
+        }
+      end
+
+      private def request_body(messages : Array(Message), tools : Array(ToolSpec), stream : Bool) : String
+        {
+          "model"  => model,
+          "input"  => messages.map(&.to_api_json),
+          "stream" => stream,
+          "store"  => false,
+          "tools"  => tools.map { |tool| tool.to_json_any["function"] },
+        }.to_json
+      end
+
+      private def parse_response(json : JSON::Any) : AssistantResponse
+        output = json["output"]?.try(&.as_a) || [] of JSON::Any
+        text = String.build do |result|
+          output.each do |item|
+            next unless item["type"]?.try(&.as_s?) == "message"
+            if content = item["content"]?.try(&.as_a)
+              content.each do |part|
+                result << part["text"].as_s if part["type"]?.try(&.as_s?) == "output_text"
+              end
+            end
+          end
+        end
+        AssistantResponse.new(text.empty? ? nil : text)
+      end
+
+      private def parse_credential(credential : String?) : {String, String}
+        raise "ChatGPT credential is not configured" unless credential
+        json = JSON.parse(credential)
+        access = json["access_token"]?.try(&.as_s) || raise "ChatGPT credential omitted access_token"
+        account = json["account_id"]?.try(&.as_s?) || account_id_from_jwt(access) || raise "ChatGPT credential omitted account id"
+        {access, account}
+      rescue JSON::ParseException
+        raise "ChatGPT credential has invalid token data"
+      end
+
+      private def account_id_from_jwt(token : String) : String?
+        parts = token.split('.')
+        return nil unless parts.size >= 2
+        payload = Base64.decode_string(parts[1] + ("=" * ((4 - parts[1].size % 4) % 4)))
+        json = JSON.parse(payload)
+        json["https://api.openai.com/auth"]?.try(&.as_h).try { |claims| claims["chatgpt_account_id"]?.try(&.as_s?) } ||
+          json["chatgpt_account_id"]?.try(&.as_s?)
+      rescue
+        nil
+      end
+    end
+  end
+end
