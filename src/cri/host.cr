@@ -42,19 +42,32 @@ module Cri
       Agent.new(provider, tools, events, session)
     end
 
-    def default_provider : Provider
-      provider_id = config.provider_id
-      if provider_id
-        return provider(provider_id)
+    def default_model : ModelRef
+      candidates = providers.models
+      if provider_id = config.provider_id
+        selected_provider = providers.find(provider_id)
+        candidates = candidates.select { |model| selected_provider && model.provider_id == selected_provider.id }
       end
-      registration = providers.all.first? || raise "no provider registered; load a provider extension first"
-      provider(registration.id, config.auth_flow_id)
-    rescue ex : Exception
-      raise "unable to select provider#{provider_id ? " '#{provider_id}'" : ""}: #{ex.message}"
+      if flow_id = config.auth_flow_id
+        candidates = candidates.select { |model| model.auth_flow_id == flow_id }
+      end
+      candidates.first? || raise "no model registered; load a provider extension first"
     end
 
-    def provider(provider_id : String, flow_id : String? = nil) : Provider
+    def default_provider : Provider
+      model(default_model.id)
+    rescue ex : Exception
+      raise "unable to select provider#{config.provider_id ? " '#{config.provider_id}'" : ""}: #{ex.message}"
+    end
+
+    def model(model_id : String) : Provider
+      model_ref = providers.find_model(model_id) || raise "unknown model: #{model_id}"
+      provider(model_ref.provider_id, model_ref.auth_flow_id, model_ref)
+    end
+
+    def provider(provider_id : String, flow_id : String? = nil, model_ref : ModelRef? = nil) : Provider
       registration = providers.find(provider_id) || raise "unknown provider: #{provider_id}"
+      provider_id = registration.id
       selected_flow_id = flow_id || config.auth_flow_id
       flow = if selected_flow_id
                registration.auth_flow(selected_flow_id)
@@ -68,6 +81,7 @@ module Cri
         end
       end
       effective = registration.for_flow(flow)
+      effective = effective.for_model(model_ref) if model_ref
       secret = ref.try { |credential| auth.secret(credential) }
       Provider.new(effective, api_clients.build(effective, secret))
     end
@@ -75,6 +89,7 @@ module Cri
     def login_api_token(provider_id : String, flow_id : String, secret : String) : Auth::CredentialRef
       provider = providers.find(provider_id)
       raise "unknown auth provider: #{provider_id}" unless provider
+      provider_id = provider.not_nil!.id
       flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
       raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
       raise "auth flow is not an API token flow" unless flow.not_nil!.kind == Auth::FlowKind::ApiToken
@@ -90,6 +105,7 @@ module Cri
     def login_device(provider_id : String, flow_id : String, &on_status : String ->) : Auth::CredentialRef
       provider = providers.find(provider_id)
       raise "unknown auth provider: #{provider_id}" unless provider
+      provider_id = provider.not_nil!.id
       flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
       raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
       raise "auth flow is not a device flow" unless flow.not_nil!.kind == Auth::FlowKind::OAuthDevice
@@ -101,6 +117,7 @@ module Cri
     def login_browser(provider_id : String, flow_id : String, &on_status : String ->) : Auth::CredentialRef
       provider = providers.find(provider_id)
       raise "unknown auth provider: #{provider_id}" unless provider
+      provider_id = provider.not_nil!.id
       flow = provider.not_nil!.auth_flows.find { |candidate| candidate.id == flow_id }
       raise "unknown auth flow: #{provider_id}/#{flow_id}" unless flow
       raise "auth flow is not a browser OAuth flow" unless flow.not_nil!.kind == Auth::FlowKind::OAuthBrowser
@@ -110,7 +127,8 @@ module Cri
     end
 
     def logout_auth(provider_id : String, flow_id : String)
-      auth.logout(provider_id, flow_id)
+      provider = providers.find(provider_id) || raise "unknown auth provider: #{provider_id}"
+      auth.logout(provider.id, flow_id)
     end
 
     def extension_command(name : String) : Extensions::Manifest?

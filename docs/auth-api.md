@@ -87,7 +87,8 @@ cri auth logout openai api-key
 
 Multiple providers and auth flows can coexist in one host. Login is scoped to
 an explicit provider/flow; the TUI switches the active runtime with
-`:provider <provider-id> [flow-id]`, without environment-variable switching.
+`:model` / `:model <model-id>`, without environment-variable switching. The
+selected model reference owns the provider and auth flow used by the session.
 
 The interactive token prompt disables terminal echo and does not put the token
 in command arguments or transcript output. For `openai/api-key`, the host

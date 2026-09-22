@@ -3,9 +3,17 @@ module Cri
     class Controller
       getter host : Host
       getter agent : Agent?
+      getter session : Session
 
       def initialize(@host : Host, provider : Provider? = nil)
-        @agent = provider.try { |selected| host.agent(selected) }
+        @session = Session.new
+        if selected = provider
+          @agent = host.agent(selected, session)
+          refs = selected.registration.try(&.model_refs) || [] of ModelRef
+          @session.select_model(refs.first) unless refs.empty?
+        else
+          @agent = nil
+        end
       end
 
       def submit(input : String) : Tuple(Bool, String)
@@ -41,9 +49,11 @@ module Cri
           {true, auth_text(args)}
         when "provider"
           provider_command(args)
+        when "model"
+          model_command(args)
         when "session"
           if active = agent
-            {true, "session: #{active.session.id}\nmessages: #{active.session.messages.size}"}
+            {true, "session: #{active.session.id}\nmodel: #{session.current_model.try(&.id) || "none"}\nmessages: #{active.session.messages.size}"}
           else
             {true, "no active provider"}
           end
@@ -60,7 +70,12 @@ module Cri
       end
 
       private def ensure_agent : Agent
-        @agent ||= host.agent(host.default_provider)
+        if active = agent
+          return active
+        end
+        @agent = host.agent(host.default_provider, session)
+        session.select_model(host.default_model)
+        @agent.not_nil!
       end
 
       private def help_text : String
@@ -75,6 +90,27 @@ module Cri
       private def extensions_text : String
         return "no valid extensions" if host.extensions.valid.empty?
         host.extensions.valid.map { |manifest| "#{manifest.name} #{manifest.version}" }.join("\n")
+      end
+
+      private def model_command(args : String) : Tuple(Bool, String)
+        if args.empty?
+          lines = ["Models:"]
+          host.providers.models.each do |model|
+            marker = session.current_model.try(&.id) == model.id ? "*" : " "
+            lines << "#{marker} #{model.id} — #{model.title}"
+          end
+          return {true, lines.join("\n")}
+        end
+
+        model_id = args.split.first
+        begin
+          @agent = host.agent(host.model(model_id), session)
+          model = host.providers.find_model(model_id).not_nil!
+          session.select_model(model)
+          {true, "selected model #{model.id}"}
+        rescue ex
+          {true, "model selection failed: #{ex.message || ex.class.name}"}
+        end
       end
 
       private def provider_command(args : String) : Tuple(Bool, String)

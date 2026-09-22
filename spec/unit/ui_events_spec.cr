@@ -58,6 +58,27 @@ describe Cri::Tui::EventHandler do
     ui.transcript.content.should contain("session:")
   end
 
+  it "switches the session model and preserves its model reference" do
+    auth = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
+    host = Cri::Host.new(auth: auth)
+    host.providers.register(Cri::ProviderRegistration.new(
+      "openrouter",
+      "OpenRouter",
+      "openai",
+      "https://example.test/v1/chat/completions",
+      "openai/gpt-4o",
+      "http+sse",
+      [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)],
+      "test",
+      [Cri::ModelRef.new("openrouter/gpt-4o", "openrouter", "openai/gpt-4o", "GPT-4o")]
+    ))
+    controller = Cri::Tui::Controller.new(host, host.provider("openrouter"))
+
+    controller.submit("/model openrouter/gpt-4o") { }
+
+    controller.session.current_model.not_nil!.id.should eq("openrouter/gpt-4o")
+  end
+
   it "collects API tokens in a masked TUI prompt without transcript leakage" do
     ui = Cri::Tui::UiRuntime.new
     auth = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
