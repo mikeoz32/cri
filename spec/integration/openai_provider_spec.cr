@@ -25,6 +25,11 @@ describe Cri::APIClients::OpenAICompatible do
         tools[0]["type"].as_s.should eq("function")
         tools[0]["name"].as_s.should eq("demo_tool")
       end
+      input = body["input"].as_a
+      if input.any? { |item| item["type"]?.try(&.as_s?) == "function_call" }
+        input.any? { |item| item["type"]?.try(&.as_s?) == "function_call_output" }.should be_true
+        input.any? { |item| item["tool_calls"]? }.should be_false
+      end
       context.response.print(%({"output":[{"type":"message","content":[{"type":"output_text","text":"hello from subscription"}]}]}))
     end
     address = server.bind_tcp("127.0.0.1", 0)
@@ -48,6 +53,15 @@ describe Cri::APIClients::OpenAICompatible do
     )
     tool_response = tool_client.complete([Cri::Message.user("hello")], [tool])
     tool_response.content.should eq("hello from subscription")
+
+    call = Cri::ToolCall.new("call-1", "demo.tool", JSON.parse(%({"city":"Lviv"})))
+    history = [
+      Cri::Message.user("what is the weather?"),
+      Cri::Message.assistant(nil, [call]),
+      Cri::Message.tool(call, %({"temperature":10})),
+    ]
+    history_response = tool_client.complete(history, [tool])
+    history_response.content.should eq("hello from subscription")
   ensure
     server.try(&.close)
   end
