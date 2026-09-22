@@ -36,6 +36,7 @@ require "./wasm/conformance"
 {% end %}
 require "./message"
 require "./session"
+require "./session_store"
 require "./agent"
 require "./api_clients/openai_compatible_http"
 require "./api_clients/openai_compatible"

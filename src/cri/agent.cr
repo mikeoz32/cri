@@ -54,13 +54,13 @@ module Cri
 
         streamed_bytes = 0_i64
         response = if provider.supports_streaming?
-                     provider.complete_stream(session.messages, tools.specs) do |chunk|
+                     provider.complete_stream(session.messages, tools.specs, session.settings) do |chunk|
                        streamed_bytes += chunk.bytesize
                        raise LimitError.new("agent response exceeds #{max_response_bytes} bytes") if streamed_bytes > max_response_bytes
                        on_text.call(chunk)
                      end
                    else
-                     provider.complete(session.messages, tools.specs)
+                     provider.complete(session.messages, tools.specs, session.settings)
                    end
         response_bytes = response.content.try(&.bytesize) || 0
         raise LimitError.new("agent response exceeds #{max_response_bytes} bytes") if response_bytes > max_response_bytes

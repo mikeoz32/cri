@@ -18,6 +18,39 @@ module Cri
     end
   end
 
+  class ModelSettings
+    getter reasoning_effort : String?
+    getter temperature : Float64?
+    getter max_output_tokens : Int64?
+
+    def initialize(
+      @reasoning_effort : String? = nil,
+      @temperature : Float64? = nil,
+      @max_output_tokens : Int64? = nil,
+    )
+    end
+
+    def empty? : Bool
+      !reasoning_effort && !temperature && !max_output_tokens
+    end
+
+    def to_json_any : JSON::Any
+      values = {} of String => JSON::Any
+      values["reasoning_effort"] = JSON::Any.new(reasoning_effort) if reasoning_effort
+      values["temperature"] = JSON::Any.new(temperature) if temperature
+      values["max_output_tokens"] = JSON::Any.new(max_output_tokens) if max_output_tokens
+      JSON::Any.new(values)
+    end
+
+    def self.from_json(value : JSON::Any) : ModelSettings
+      new(
+        value["reasoning_effort"]?.try(&.as_s?),
+        value["temperature"]?.try(&.as_f?),
+        value["max_output_tokens"]?.try(&.as_i64?)
+      )
+    end
+  end
+
   class AssistantResponse
     getter content : String?
     getter tool_calls : Array(ToolCall)
@@ -46,8 +79,13 @@ module Cri
       client.not_nil!.complete(messages, tools)
     end
 
-    def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
-      response = complete(messages, tools)
+    def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new) : AssistantResponse
+      return complete(messages, tools) if settings.empty?
+      client.not_nil!.complete(messages, tools, settings)
+    end
+
+    def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
+      response = complete(messages, tools, settings)
       response.content.try { |content| on_text.call(content) }
       response
     end
@@ -60,10 +98,14 @@ module Cri
   # API clients implement wire-level API semantics. They are not providers:
   # provider registrations supply identity/configuration and wrap one client.
   abstract class APIClient
-    abstract def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
+    def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
+      complete(messages, tools, ModelSettings.new)
+    end
 
-    def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
-      response = complete(messages, tools)
+    abstract def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new) : AssistantResponse
+
+    def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
+      response = complete(messages, tools, settings)
       response.content.try { |content| on_text.call(content) }
       response
     end

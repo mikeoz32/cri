@@ -30,6 +30,25 @@ module Cri
       new("tool", content, call.name, call.id)
     end
 
+    def self.from_json(value : JSON::Any) : Message
+      role = value["role"].as_s
+      content = value["content"]?.try(&.as_s?)
+      name = value["name"]?.try(&.as_s?)
+      tool_call_id = value["tool_call_id"]?.try(&.as_s?)
+      calls = [] of ToolCall
+      value["tool_calls"]?.try(&.as_a).try do |items|
+        items.each do |item|
+          function = item["function"]?
+          call_name = function.try(&.["name"]?.try(&.as_s?)) || item["name"]?.try(&.as_s?) || ""
+          raw_arguments = function.try(&.["arguments"]?.try(&.as_s?)) || item["arguments"]?.try(&.as_s?) || "{}"
+          call_arguments = JSON.parse(raw_arguments)
+          call_id = item["id"]?.try(&.as_s?) || item["call_id"]?.try(&.as_s?) || Random::Secure.hex(8)
+          calls << ToolCall.new(call_id, call_name, call_arguments)
+        end
+      end
+      new(role, content, name, tool_call_id, calls)
+    end
+
     def to_api_json : JSON::Any
       JSON.parse(JSON.build do |json|
         json.object do

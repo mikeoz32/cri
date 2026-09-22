@@ -6,14 +6,16 @@ module Cri
       getter session : Session
 
       def initialize(@host : Host, provider : Provider? = nil)
-        @session = Session.new
+        @sessions = SessionStore.new(host.config.cwd)
+        @session = @sessions.current || Session.new
         if selected = provider
           @agent = host.agent(selected, session)
           refs = selected.registration.try(&.model_refs) || [] of ModelRef
-          @session.select_model(refs.first) unless refs.empty?
+          @session.select_model(refs.first) unless refs.empty? || @session.current_model
         else
           @agent = nil
         end
+        @sessions.save(@session)
       end
 
       def submit(input : String) : Tuple(Bool, String)
@@ -21,13 +23,16 @@ module Cri
       end
 
       def submit(input : String, &on_text : String -> Nil) : Tuple(Bool, String)
-        if input.starts_with?("/")
-          dispatch_command(input[1..-1])
-        else
-          active = ensure_agent
-          {true, active.run_turn(input) { |chunk| on_text.call(chunk) }}
-        end
+        result = if input.starts_with?("/")
+                   dispatch_command(input[1..-1])
+                 else
+                   active = ensure_agent
+                   {true, active.run_turn(input) { |chunk| on_text.call(chunk) }}
+                 end
+        @sessions.save(session)
+        result
       rescue ex
+        @sessions.save(session)
         {true, "provider unavailable: #{ex.message || ex.class.name}"}
       end
 
@@ -64,6 +69,8 @@ module Cri
           else
             {true, "no active provider"}
           end
+        when "settings"
+          settings_command(args)
         else
           {true, execute_extension_command(name, args)}
         end
@@ -73,8 +80,13 @@ module Cri
         if active = agent
           return active
         end
-        @agent = host.agent(host.default_provider, session)
-        session.select_model(host.default_model)
+        if model = session.current_model
+          @agent = host.agent(host.model(model), session)
+        else
+          selected = host.default_model
+          session.select_model(selected)
+          @agent = host.agent(host.model(selected), session)
+        end
         @agent.not_nil!
       end
 
@@ -122,6 +134,19 @@ module Cri
         rescue ex
           {true, "model selection failed: #{ex.message || ex.class.name}"}
         end
+      end
+
+      private def settings_command(args : String) : Tuple(Bool, String)
+        parts = args.split
+        if parts.empty?
+          return {true, session.settings.to_json_any.to_pretty_json}
+        end
+        return {false, "usage: /settings reasoning [none|low|medium|high]"} unless parts[0] == "reasoning"
+        effort = parts[1]?
+        return {false, "usage: /settings reasoning [none|low|medium|high]"} unless effort
+        effort = nil if effort == "none"
+        session.set_settings(ModelSettings.new(effort, session.settings.temperature, session.settings.max_output_tokens))
+        {true, "reasoning: #{session.settings.reasoning_effort || "default"}"}
       end
 
       private def provider_command(args : String) : Tuple(Bool, String)

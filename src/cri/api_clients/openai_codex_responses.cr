@@ -31,10 +31,10 @@ module Cri
         end
       end
 
-      def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
+      def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new) : AssistantResponse
         # Codex Responses requires streaming even for callers that request a
         # collected response. Read the SSE body to completion here.
-        response = transport.request("POST", endpoint, headers, request_body(messages, tools, true))
+        response = transport.request("POST", endpoint, headers, request_body(messages, tools, settings, true))
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
         content = String::Builder.new
         tool_calls = [] of ToolCall
@@ -62,11 +62,11 @@ module Cri
         AssistantResponse.new(text.empty? ? nil : text, tool_calls)
       end
 
-      def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
+      def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
         content = String::Builder.new
         tool_calls = [] of ToolCall
         tool_names = tool_name_map(tools)
-        response = transport.stream(endpoint, headers, request_body(messages, tools, true)) do |data|
+        response = transport.stream(endpoint, headers, request_body(messages, tools, settings, true)) do |data|
           unless data == "[DONE]"
             event = JSON.parse(data)
             case event["type"]?.try(&.as_s?)
@@ -102,15 +102,20 @@ module Cri
         }
       end
 
-      private def request_body(messages : Array(Message), tools : Array(ToolSpec), stream : Bool) : String
-        body = {
+      private def request_body(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings, stream : Bool) : String
+        body = JSON.parse({
           "model"  => model,
           "input"  => messages.map(&.to_api_json),
           "stream" => stream,
           "store"  => false,
-        }
+        }.to_json).as_h
+        settings.reasoning_effort.try do |effort|
+          body["reasoning"] = JSON.parse({"effort" => effort}.to_json)
+        end
+        settings.temperature.try { |temperature| body["temperature"] = JSON::Any.new(temperature) }
+        settings.max_output_tokens.try { |limit| body["max_output_tokens"] = JSON::Any.new(limit) }
         unless tools.empty?
-          body["tools"] = tools.map do |tool|
+          body["tools"] = JSON::Any.new(tools.map do |tool|
             function = tool.to_json_any["function"]
             JSON.parse({
               "type"        => "function",
@@ -118,7 +123,7 @@ module Cri
               "description" => function["description"],
               "parameters"  => function["parameters"],
             }.to_json)
-          end
+          end)
         end
         body.to_json
       end

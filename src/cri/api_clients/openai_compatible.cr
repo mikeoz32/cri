@@ -16,8 +16,8 @@ module Cri
         @client = OpenAICompatibleHTTP.new(endpoint, api_key, timeout, transport)
       end
 
-      def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
-        parse_response(client.chat(payload(messages, tools, false)))
+      def complete(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new) : AssistantResponse
+        parse_response(client.chat(payload(messages, tools, settings, false)))
       end
 
       def supports_streaming? : Bool
@@ -32,10 +32,10 @@ module Cri
         client.list_models
       end
 
-      def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
+      def complete_stream(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings = ModelSettings.new, &on_text : String -> Nil) : AssistantResponse
         tool_call_parts = {} of Int32 => NamedTuple(id: String, name: String, arguments: String)
         content = String.build do |output|
-          client.chat_stream(payload(messages, tools, true)) do |chunk|
+          client.chat_stream(payload(messages, tools, settings, true)) do |chunk|
             choice = chunk["choices"]?.try(&.as_a.first?)
             next unless choice
             delta = choice["delta"]
@@ -72,14 +72,17 @@ module Cri
         raise "invalid streamed OpenAI tool call arguments"
       end
 
-      private def payload(messages : Array(Message), tools : Array(ToolSpec), stream : Bool) : JSON::Any
-        body = {
+      private def payload(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings, stream : Bool) : JSON::Any
+        body = JSON.parse({
           "model"    => model,
           "messages" => messages.map(&.to_api_json),
           "stream"   => stream,
-        }
-        body["tools"] = tools.map(&.to_json_any) unless tools.empty?
-        JSON.parse(body.to_json)
+        }.to_json).as_h
+        body["tools"] = JSON::Any.new(tools.map(&.to_json_any)) unless tools.empty?
+        settings.reasoning_effort.try { |effort| body["reasoning_effort"] = JSON::Any.new(effort) }
+        settings.temperature.try { |temperature| body["temperature"] = JSON::Any.new(temperature) }
+        settings.max_output_tokens.try { |limit| body["max_tokens"] = JSON::Any.new(limit) }
+        JSON::Any.new(body)
       end
 
       private def parse_response(root : JSON::Any) : AssistantResponse

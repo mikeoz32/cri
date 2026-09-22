@@ -44,6 +44,13 @@ module Cri
 
     def default_model : ModelRef
       candidates = providers.models
+      if candidates.empty?
+        begin
+          candidates = refresh_models
+        rescue Exception
+          # The caller will report the normal no-model error below.
+        end
+      end
       if provider_id = config.provider_id
         selected_provider = providers.find(provider_id)
         candidates = candidates.select { |model| selected_provider && model.provider_id == selected_provider.id }
@@ -62,6 +69,10 @@ module Cri
 
     def model(model_id : String) : Provider
       model_ref = providers.find_model(model_id) || raise "unknown model: #{model_id}"
+      model(model_ref)
+    end
+
+    def model(model_ref : ModelRef) : Provider
       provider(model_ref.provider_id, model_ref.auth_flow_id, model_ref)
     end
 
