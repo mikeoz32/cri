@@ -26,8 +26,25 @@ module Cri
     end
   end
 
-  abstract class Provider
-    abstract def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
+  # Generic provider runtime. Provider identity/configuration comes from the
+  # registration; wire semantics come from the selected APIClient.
+  class Provider
+    getter registration : ProviderRegistration?
+    getter client : APIClient?
+
+    # The no-argument initializer keeps the public Provider seam usable for
+    # custom/native implementations that override complete.
+    def initialize
+      @registration = nil
+      @client = nil
+    end
+
+    def initialize(@registration : ProviderRegistration, @client : APIClient)
+    end
+
+    def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
+      client.not_nil!.complete(messages, tools)
+    end
 
     def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
       response = complete(messages, tools)
@@ -36,7 +53,7 @@ module Cri
     end
 
     def supports_streaming? : Bool
-      false
+      client.try(&.supports_streaming?) || false
     end
   end
 
@@ -56,26 +73,6 @@ module Cri
     end
 
     def validate_credentials : Nil
-    end
-  end
-
-  class ProviderRuntime < Provider
-    getter registration : ProviderRegistration
-    getter client : APIClient
-
-    def initialize(@registration : ProviderRegistration, @client : APIClient)
-    end
-
-    def complete(messages : Array(Message), tools : Array(ToolSpec)) : AssistantResponse
-      client.complete(messages, tools)
-    end
-
-    def complete_stream(messages : Array(Message), tools : Array(ToolSpec), &on_text : String -> Nil) : AssistantResponse
-      client.complete_stream(messages, tools) { |text| on_text.call(text) }
-    end
-
-    def supports_streaming? : Bool
-      client.supports_streaming?
     end
   end
 end
