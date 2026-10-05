@@ -190,7 +190,7 @@ module Cri
         name = argv.shift? || abort("missing extension name")
         kind = argv.shift? || abort("missing contribution kind")
         contribution = argv.shift? || abort("missing contribution name")
-        input = JSON.parse(argv.shift? || "{}")
+        input = RawJSON.new(argv.shift? || "{}")
         registry = host.extensions
         manifest = registry.find(name)
         abort("extension not found: #{name}") unless manifest

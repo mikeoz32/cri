@@ -1,4 +1,5 @@
 require "../spec_helper"
+require "file_utils"
 
 class VimTestProvider < Cri::Provider
   def complete(messages : Array(Cri::Message), tools : Array(Cri::ToolSpec)) : Cri::AssistantResponse
@@ -9,14 +10,21 @@ end
 describe "Simplified Vim UI regressions" do
   it "leaves q and Tab unbound and exits with :q" do
     ui = Cri::Tui::UiRuntime.new
-    controller = Cri::Tui::Controller.new(Cri::Host.new, VimTestProvider.new)
-    handler = Cri::Tui::EventHandler.new(ui, controller)
-    ui.focused_buffer.not_nil!.mode = Cri::Tui::Mode::Normal
-    handler.handle(Cri::Tui::KeyEvent.character("q")) { }.should be_true
-    handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Tab)) { }.should be_true
-    handler.handle(Cri::Tui::KeyEvent.character(":")) { }
-    handler.handle(Cri::Tui::KeyEvent.character("q")) { }
-    handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }.should be_false
+    root = "/tmp/cri-tui-regression-#{Process.pid}-#{Random.rand(1_000_000)}"
+    Dir.mkdir(root)
+    begin
+      host = Cri::Host.new(Cri::Config.new(root, [] of String, Cri::Permissions::GrantPolicy.default))
+      controller = Cri::Tui::Controller.new(host, VimTestProvider.new)
+      handler = Cri::Tui::EventHandler.new(ui, controller)
+      ui.focused_buffer.not_nil!.mode = Cri::Tui::Mode::Normal
+      handler.handle(Cri::Tui::KeyEvent.character("q")) { }.should be_true
+      handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Tab)) { }.should be_true
+      handler.handle(Cri::Tui::KeyEvent.character(":")) { }
+      handler.handle(Cri::Tui::KeyEvent.character("q")) { }
+      handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }.should be_false
+    ensure
+      FileUtils.rm_rf(root)
+    end
   end
 
   it "edits Ukrainian characters without mixing byte and character offsets" do

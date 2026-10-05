@@ -1,81 +1,123 @@
 module Cri
+  class ToolCallFunction
+    include JSON::Serializable
+
+    property name : String
+    property arguments : String
+
+    def initialize(@name : String, @arguments : String = "{}")
+    end
+  end
+
+  class ToolCallRecord
+    include JSON::Serializable
+
+    property id : String
+    property function : ToolCallFunction
+    property type : String = "function"
+
+    def initialize(@id : String, @function : ToolCallFunction, @type : String = "function")
+    end
+  end
+
   class ToolCall
     getter id : String
     getter name : String
-    getter arguments : JSON::Any
+    getter arguments : RawJSON
 
-    def initialize(@id : String, @name : String, @arguments : JSON::Any)
+    def initialize(@id : String, @name : String, @arguments : RawJSON)
+    end
+
+    # Compatibility constructor for callers migrating from JSON::Any.
+    def initialize(id : String, name : String, arguments : JSON::Any)
+      initialize(id, name, RawJSON.from_any(arguments))
+    end
+
+    def initialize(pull : JSON::PullParser)
+      record = ToolCallRecord.new(pull)
+      @id = record.id
+      @name = record.function.name
+      @arguments = RawJSON.new(record.function.arguments)
+    end
+
+    def to_json(json : JSON::Builder) : Nil
+      json.object do
+        json.field "id", id
+        json.field "type", "function"
+        json.field "function" do
+          json.object do
+            json.field "name", name
+            json.field "arguments", arguments.raw
+          end
+        end
+      end
     end
   end
 
   class Message
+    include JSON::Serializable
+
     getter role : String
+
+    @[JSON::Field(emit_null: true)]
     getter content : String?
+
     getter name : String?
     getter tool_call_id : String?
-    getter tool_calls : Array(ToolCall)
 
-    def initialize(@role : String, @content : String? = nil, @name : String? = nil, @tool_call_id : String? = nil, @tool_calls : Array(ToolCall) = [] of ToolCall)
+    @[JSON::Field(ignore_serialize: tool_calls.empty?)]
+    getter tool_calls : Array(ToolCall) = [] of ToolCall
+
+    def self.user(content : String) : Message
+      UserMessage.new(content).as(Message)
     end
 
-    def self.user(content : String) : self
-      new("user", content)
+    def self.assistant(content : String?, tool_calls : Array(ToolCall) = [] of ToolCall) : Message
+      AssistantMessage.new(content, tool_calls).as(Message)
     end
 
-    def self.assistant(content : String?, tool_calls : Array(ToolCall) = [] of ToolCall) : self
-      new("assistant", content, nil, nil, tool_calls)
+    def self.tool(call : ToolCall, content : String) : Message
+      ToolMessage.new(call.name, call.id, content).as(Message)
     end
 
-    def self.tool(call : ToolCall, content : String) : self
-      new("tool", content, call.name, call.id)
-    end
-
-    def self.from_json(value : JSON::Any) : Message
-      role = value["role"].as_s
-      content = value["content"]?.try(&.as_s?)
-      name = value["name"]?.try(&.as_s?)
-      tool_call_id = value["tool_call_id"]?.try(&.as_s?)
-      calls = [] of ToolCall
-      value["tool_calls"]?.try(&.as_a).try do |items|
-        items.each do |item|
-          function = item["function"]?
-          call_name = function.try(&.["name"]?.try(&.as_s?)) || item["name"]?.try(&.as_s?) || ""
-          raw_arguments = function.try(&.["arguments"]?.try(&.as_s?)) || item["arguments"]?.try(&.as_s?) || "{}"
-          call_arguments = JSON.parse(raw_arguments)
-          call_id = item["id"]?.try(&.as_s?) || item["call_id"]?.try(&.as_s?) || Random::Secure.hex(8)
-          calls << ToolCall.new(call_id, call_name, call_arguments)
-        end
-      end
-      new(role, content, name, tool_call_id, calls)
-    end
-
+    # Compatibility adapter for older callers. Session storage and provider
+    # request construction use the typed message directly.
     def to_api_json : JSON::Any
-      JSON.parse(JSON.build do |json|
-        json.object do
-          json.field "role", role
-          json.field "content", content || ""
-          json.field "name", name if name
-          json.field "tool_call_id", tool_call_id if tool_call_id
-          unless tool_calls.empty?
-            json.field "tool_calls" do
-              json.array do
-                tool_calls.each do |call|
-                  json.object do
-                    json.field "id", call.id
-                    json.field "type", "function"
-                    json.field "function" do
-                      json.object do
-                        json.field "name", call.name
-                        json.field "arguments", call.arguments.to_json
-                      end
-                    end
-                  end
-                end
-              end
-            end
-          end
-        end
-      end)
+      JSON.parse(to_json)
     end
+  end
+
+  class UserMessage < Message
+    def initialize(content : String)
+      @role = "user"
+      @content = content
+      @name = nil
+      @tool_call_id = nil
+      @tool_calls = [] of ToolCall
+    end
+  end
+
+  class AssistantMessage < Message
+    def initialize(content : String?, tool_calls : Array(ToolCall) = [] of ToolCall)
+      @role = "assistant"
+      @content = content
+      @name = nil
+      @tool_call_id = nil
+      @tool_calls = tool_calls
+    end
+  end
+
+  class ToolMessage < Message
+    def initialize(name : String, tool_call_id : String, content : String)
+      @role = "tool"
+      @content = content
+      @name = name
+      @tool_call_id = tool_call_id
+      @tool_calls = [] of ToolCall
+    end
+  end
+
+  class Message
+    use_json_discriminator "role", {user: UserMessage, assistant: AssistantMessage, tool: ToolMessage}
   end
 end

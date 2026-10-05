@@ -27,10 +27,7 @@ module Cri
       register_api_clients
       @providers = ProviderRegistry.new(auth)
       @builtins = ToolRegistry.new
-      @builtins.register_builtins
-      @builtins.register(ReadFileTool.new(config.cwd))
-      @builtins.register(ListFilesTool.new(config.cwd))
-      @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities)
+      @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities, workspace_root: config.cwd)
       register_extension_provider_hooks
       @tools = ToolRouter.new(@builtins, @extensions, @invoker, config.grants)
       @commands = CommandRegistry.new
@@ -186,7 +183,7 @@ module Cri
 
     private def register_extension_provider_hooks
       return unless invoker.available?
-      input = JSON.parse({"event" => "host.init"}.to_json)
+      input = RawJSON.new({"event" => "host.init"}.to_json)
       extensions.enabled(config.grants).each do |manifest|
         manifest.hooks.select { |hook| hook.name == "init" }.each do |hook|
           response = invoker.invoke(

@@ -54,7 +54,7 @@ module Cri
       end
 
       def cursor=(position : Int32)
-        next_cursor = clamp_offset(position)
+        next_cursor = grapheme_boundary_at_or_before(position)
         @cursor_revision += 1 if next_cursor != @cursor
         @cursor = next_cursor
         events.try { |bus| bus.emit(Event.new("buffer.changed", source: id)) }
@@ -69,8 +69,7 @@ module Cri
         anchor = selection_anchor
         return nil unless anchor
         start = {anchor, cursor}.min
-        finish = {anchor, cursor}.max + 1
-        finish = content.size if finish > content.size
+        finish = next_grapheme_offset({anchor, cursor}.max)
         return nil if start == finish
         start...finish
       end
@@ -133,6 +132,14 @@ module Cri
         {line, column}
       end
 
+      def move_left
+        self.cursor = previous_grapheme_offset(cursor)
+      end
+
+      def move_right
+        self.cursor = next_grapheme_offset(cursor)
+      end
+
       def move_vertical(delta : Int32)
         line, column = cursor_line_column
         lines = content.split('\n', remove_empty: false)
@@ -140,15 +147,99 @@ module Cri
         target = 0 if target < 0
         last_line = lines.size.to_i32 - 1
         target = last_line if target > last_line
-        target_column = column > lines[target].size ? lines[target].size.to_i32 : column
-        self.cursor = lines.first(target).sum { |item| item.size + 1 }.to_i32 + target_column
+        source_line = lines[line]? || ""
+        target_line = lines[target]? || ""
+        target_column = offset_at_cell_column(target_line, cell_column(source_line, column))
+        self.cursor = line_start_offset(target) + target_column
+      end
+
+      def move_line_start
+        line, _column = cursor_line_column
+        self.cursor = line_start_offset(line)
+      end
+
+      def move_first_nonblank
+        line, _column = cursor_line_column
+        text = lines[line]? || ""
+        leading = 0
+        text.each_grapheme do |grapheme|
+          break unless grapheme.to_s.chars.all?(&.whitespace?)
+          leading += grapheme.size
+        end
+        self.cursor = line_start_offset(line) + leading
+      end
+
+      def move_line_end
+        line, _column = cursor_line_column
+        text = lines[line]? || ""
+        offsets = grapheme_offsets(text)
+        last_grapheme = offsets.size > 1 ? offsets[-2] : 0
+        self.cursor = line_start_offset(line) + last_grapheme
+      end
+
+      def move_document_start
+        self.cursor = 0
+      end
+
+      def move_document_end
+        line = lines.size.to_i32 - 1
+        text = lines.last? || ""
+        offsets = grapheme_offsets(text)
+        last_grapheme = offsets.size > 1 ? offsets[-2] : 0
+        self.cursor = line_start_offset(line) + last_grapheme
+      end
+
+      def move_word_forward
+        clusters = graphemes
+        index = grapheme_index_at_or_after(cursor, clusters)
+        return if index >= clusters.size
+
+        current_class = word_class(clusters[index])
+        while index < clusters.size && word_class(clusters[index]) == current_class && current_class != :space
+          index += 1
+        end
+        while index < clusters.size && word_class(clusters[index]) == :space
+          index += 1
+        end
+        self.cursor = offset_for_grapheme(index, clusters)
+      end
+
+      def move_word_backward
+        clusters = graphemes
+        index = grapheme_index_at_or_after(cursor, clusters)
+        index -= 1 if index >= clusters.size || offset_for_grapheme(index, clusters) >= cursor
+        while index >= 0 && word_class(clusters[index]) == :space
+          index -= 1
+        end
+        return if index < 0
+
+        current_class = word_class(clusters[index])
+        while index > 0 && word_class(clusters[index - 1]) == current_class
+          index -= 1
+        end
+        self.cursor = offset_for_grapheme(index, clusters)
+      end
+
+      def move_word_end
+        clusters = graphemes
+        index = grapheme_index_at_or_after(cursor, clusters)
+        while index < clusters.size && word_class(clusters[index]) == :space
+          index += 1
+        end
+        return if index >= clusters.size
+
+        current_class = word_class(clusters[index])
+        while index + 1 < clusters.size && word_class(clusters[index + 1]) == current_class
+          index += 1
+        end
+        self.cursor = offset_for_grapheme(index, clusters)
       end
 
       def insert(text : String)
         position = clamp_offset(cursor)
         @highlights.clear unless text.empty?
         @content = content[0...position] + text + content[position..-1].to_s
-        @cursor = position + text.size
+        @cursor = grapheme_boundary_at_or_after(position + text.size)
         @cursor_revision += 1 unless text.empty?
         emit_change
       end
@@ -157,11 +248,94 @@ module Cri
         return if cursor <= 0
         position = clamp_offset(cursor)
         return if position == 0
+        start = previous_grapheme_offset(position)
         @highlights.clear
-        @content = content[0...position - 1] + content[position..-1].to_s
-        @cursor = position - 1
+        @content = content[0...start] + content[position..-1].to_s
+        @cursor = start
         @cursor_revision += 1
         emit_change
+      end
+
+      private def graphemes : Array(String)
+        content.each_grapheme.map(&.to_s).to_a
+      end
+
+      private def grapheme_offsets(text : String = content) : Array(Int32)
+        offsets = [0_i32]
+        offset = 0_i32
+        text.each_grapheme do |grapheme|
+          offset += grapheme.size
+          offsets << offset
+        end
+        offsets
+      end
+
+      private def grapheme_boundary_at_or_before(position : Int32) : Int32
+        target = clamp_offset(position)
+        boundary = 0_i32
+        grapheme_offsets.each do |offset|
+          break if offset > target
+          boundary = offset
+        end
+        boundary
+      end
+
+      private def grapheme_boundary_at_or_after(position : Int32) : Int32
+        target = clamp_offset(position)
+        grapheme_offsets.find { |offset| offset >= target } || content.size.to_i32
+      end
+
+      private def previous_grapheme_offset(position : Int32) : Int32
+        target = clamp_offset(position)
+        previous = 0_i32
+        grapheme_offsets.each do |offset|
+          break if offset >= target
+          previous = offset
+        end
+        previous
+      end
+
+      private def next_grapheme_offset(position : Int32) : Int32
+        target = clamp_offset(position)
+        grapheme_offsets.find { |offset| offset > target } || content.size.to_i32
+      end
+
+      private def grapheme_index_at_or_after(position : Int32, clusters : Array(String)) : Int32
+        offsets = grapheme_offsets
+        offsets.index { |offset| offset >= position } || clusters.size
+      end
+
+      private def offset_for_grapheme(index : Int32, clusters : Array(String)) : Int32
+        clusters.first(index).sum(&.size).to_i32
+      end
+
+      private def line_start_offset(line : Int32) : Int32
+        lines.first(line).sum { |item| item.size + 1 }.to_i32
+      end
+
+      private def cell_column(text : String, codepoint_column : Int32) : Int32
+        prefix = text.chars.first(codepoint_column).join
+        CellWidth.of(prefix)
+      end
+
+      private def offset_at_cell_column(text : String, target_column : Int32) : Int32
+        offset = 0_i32
+        column = 0_i32
+        text.each_grapheme do |grapheme|
+          width = CellWidth.of(grapheme.to_s)
+          break if column + width > target_column
+          column += width
+          offset += grapheme.size
+        end
+        offset
+      end
+
+      private def word_class(grapheme : String) : Symbol
+        char = grapheme.chars.first?
+        return :space unless char
+        return :space if char.whitespace?
+        return :keyword if char.letter? || char.number? || char == '_'
+        :punctuation
       end
 
       private def validate_highlight(start : Int32, finish : Int32, group : String)

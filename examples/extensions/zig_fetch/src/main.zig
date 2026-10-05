@@ -7,6 +7,15 @@ var effect_buffer: [2048]u8 = undefined;
 var effects_buffer: [2200]u8 = undefined;
 
 fn call(request: cri.Request) cri.Response {
+    if (std.mem.eql(u8, request.name, "zig.workspace_ls")) {
+        const path = request.input_string("path") orelse ".";
+        const effect = effects.list_directory(path, effect_buffer[0..]);
+        effects_buffer[0] = '[';
+        @memcpy(effects_buffer[1 .. effect.len + 1], effect);
+        effects_buffer[effect.len + 1] = ']';
+        return cri.Response.with_effects("null", effects_buffer[0 .. effect.len + 2]);
+    }
+
     if (!std.mem.eql(u8, request.name, "zig.fetch")) {
         return cri.Response.failure("unknown tool");
     }

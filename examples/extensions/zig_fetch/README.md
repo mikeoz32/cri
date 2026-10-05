@@ -10,4 +10,7 @@ sdk/zig/build.sh examples/extensions/zig_fetch
 
 The script targets `wasm32-freestanding` and exports the ABI functions required by cri.
 
-The extension has no WASI imports. It returns an `http.request` effect; the Crystal host decides whether the declared domain is granted and then resumes the module.
+The extension has no WASI imports. `zig.fetch` returns an `http.request` effect,
+and `zig.workspace_ls` returns a `filesystem.list` effect. The Crystal host
+checks the declared and configured permissions, asks for per-call approval,
+then resumes the module with the result.

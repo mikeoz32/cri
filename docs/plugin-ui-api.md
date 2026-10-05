@@ -1,6 +1,6 @@
 # Plugin UI API design
 
-Status: first vertical slice implemented; buffer/panel/highlight effects and guest SDK helpers remain pending.
+Status: first vertical slice implemented, including owner-scoped buffer, panel, and highlight effects. Zig SDK helpers are available; other language SDKs remain future work.
 
 ## Principle
 
@@ -57,7 +57,7 @@ Implemented first:
 {"type":"ui.buffer.create","id":"review","content":"from plugin"}
 ```
 
-The host namespaces the resulting buffer as `plugin:<extension>:<id>` and enforces ID/content limits. The next buffer mutations use the same owner namespace:
+The host namespaces the resulting buffer as `plugin:<extension>:<id>` and enforces ID/content limits. Extension names use a restricted format so namespace components cannot overlap. Buffer mutations and panel focus/open operations also check the stored resource owner; plugins cannot target another plugin's private highlight groups. The next buffer mutations use the same owner namespace:
 
 ```json
 {"type":"ui.buffer.append","id":"review","content":"more"}
@@ -73,7 +73,7 @@ The host namespaces the resulting buffer as `plugin:<extension>:<id>` and enforc
 
 The host accepts only bounded color/attribute values and stores the style as `plugin:<extension>:plugin_accent`.
 
-Planned/implemented effect families:
+Implemented effect families:
 
 - `ui.buffer.create`
 - `ui.buffer.replace`

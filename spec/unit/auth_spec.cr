@@ -124,6 +124,10 @@ describe Cri::Auth::Broker do
       reloaded = Cri::Auth::FileCredentialStore.new(path)
       reloaded.get(ref).not_nil!.secret.should eq("secret-token")
       reloaded.find("openai-api", "api-key").not_nil!.id.should eq("cred-test")
+      saved = Cri::Auth::CredentialFile.from_json(File.read(path))
+      saved.version.should eq(Cri::Auth::FileCredentialStore::VERSION)
+      saved.credentials["cred-test"].provider.should eq("openai-api")
+      saved.credentials["cred-test"].secret.should eq("secret-token")
       File.info(path).permissions.value.should eq(0o600)
       File.exists?("#{path}.tmp").should be_false
 

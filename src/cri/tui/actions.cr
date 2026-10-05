@@ -8,10 +8,10 @@ module Cri
       def initialize(@ui : UiRuntime, @event : KeyEvent, @name : String)
       end
 
-      def serialized : JSON::Any
+      def serialized : RawJSON
         panel = ui.workspace.panels.focused
         buffer = panel.try { |item| ui.buffers.get(item.buffer_id).as?(TextBuffer) }
-        JSON.parse({
+        RawJSON.new({
           "action" => name,
           "event"  => {
             "token" => event.token,

@@ -4,13 +4,19 @@ module Cri
       getter controller : Controller
       getter ui : UiRuntime
       getter handler : EventHandler
+      getter renderer : Renderer
       @running : Bool = true
       @dirty : Bool = true
       @render_ticks : Int32 = 0
       @last_dimensions : Tuple(Int32, Int32)? = nil
       @renderer : Renderer
+      @approvals = [] of API::CapabilityRequest
 
       def initialize(@controller : Controller)
+        broker = controller.host.capabilities
+        if broker.backend.is_a?(API::DenyAllBackend)
+          broker.backend = API::EventApprovalBackend.new(controller.host.events)
+        end
         @ui = UiRuntime.new(clipboard: TerminalClipboard.new)
         enabled = controller.host.extensions.enabled(controller.host.config.grants)
         Extensions::UiActionBridge.new(@ui, controller.host.invoker, enabled).register_all
@@ -47,7 +53,7 @@ module Cri
             while @running
               event = decoder.next_event
               break unless event
-              @running = handler.handle(event) { }
+              @running = handle_key(event)
             end
           ensure
             @running = false
@@ -60,6 +66,21 @@ module Cri
         end
       end
 
+      def handle_key(event : KeyEvent) : Bool
+        if approval = @approvals.first?
+          if event.key.escape? || event.key.character? && {"n", "N"}.includes?(event.value || "")
+            controller.host.capabilities.resolve(approval.id, API::ApprovalDecision::Deny)
+            @approvals.shift
+          elsif event.key.character? && {"y", "Y"}.includes?(event.value || "")
+            controller.host.capabilities.resolve(approval.id, API::ApprovalDecision::Allow)
+            @approvals.shift
+          end
+          update_approval_prompt
+          return true
+        end
+        handler.handle(event) { }
+      end
+
       private def subscribe_to_ui_events
         # Extensions may add event names later. Any UiRuntime event invalidates
         # this application, so render scheduling is not coupled to a fixed list.
@@ -67,11 +88,34 @@ module Cri
       end
 
       private def subscribe_to_host_events
+        controller.host.events.subscribe("approval.requested") do |event|
+          data = event.data
+          @approvals << API::CapabilityRequest.new(
+            data["id"].as_s,
+            data["actor"].as_s,
+            data["capability"].as_s,
+            data["target"].as_s,
+            data["reason"].as_s
+          )
+          update_approval_prompt
+        end
         controller.host.events.subscribe("tool.completed") do |event|
           name = event.data["name"]?.try(&.as_s) || "tool"
           ok = event.data["ok"]?.try(&.as_bool) || false
           ui.set_activity("#{ok ? "✓" : "×"} #{name}\n", ok ? "tool" : "error")
         end
+      end
+
+      private def update_approval_prompt
+        if approval = @approvals.first?
+          target = approval.target
+          graphemes = target.each_grapheme.to_a
+          target = "…#{graphemes.last(16).join}" if graphemes.size > 20
+          @renderer.approval_prompt = "Approve #{approval.capability} by #{approval.actor} at #{target} [y]allow [n/Esc]deny"
+        else
+          @renderer.approval_prompt = nil
+        end
+        @dirty = true
       end
 
       private def watch_resize

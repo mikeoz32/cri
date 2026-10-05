@@ -17,6 +17,7 @@ module Cri
     # changed rows, preventing input flicker.
     class Renderer
       property workspace : Workspace
+      property approval_prompt : String?
       getter buffers : BufferStore
       getter width : Int32
       getter height : Int32
@@ -25,6 +26,7 @@ module Cri
         terminal_width, terminal_height = Terminal.dimensions
         @width = {(width || terminal_width), 1}.max
         @height = {(height || terminal_height), 5}.max
+        @approval_prompt = nil
         @previous = [] of String
         @previous_width = 0
         @previous_height = 0
@@ -54,7 +56,7 @@ module Cri
         end
 
         rows << divider
-        rows << input_line(styled)
+        rows << (approval_prompt ? approval_line(styled) : input_line(styled))
         rows.first(height)
       end
 
@@ -79,18 +81,18 @@ module Cri
         return nil unless geometry
 
         if geometry.bottom
-          return {geometry.row, {geometry.column + panel.prompt.size + buffer.cursor, width}.min}
+          prefix = buffer.content.chars[0...buffer.cursor].join
+          return {geometry.row, {geometry.column + CellWidth.of(panel.prompt) + CellWidth.of(prefix), width}.min}
         end
 
-        _cursor_line, cursor_column = buffer.cursor_line_column
         content_height = {geometry.height - 1, 0}.max
         panel.ensure_cursor_visible(buffers, content_height, geometry.width)
         start = panel.view_start(buffers, content_height, geometry.width)
-        visual_line = panel.cursor_visual_line(buffers, geometry.width)
+        visual_line, visual_column = panel.cursor_visual_position(buffers, geometry.width)
         return nil unless visual_line >= start && visual_line < start + content_height
         {
           geometry.row + 1 + visual_line - start,
-          {geometry.column + cursor_column, geometry.column + geometry.width - 1}.min,
+          {geometry.column + visual_column, geometry.column + geometry.width - 1}.min,
         }
       end
 
@@ -158,6 +160,7 @@ module Cri
       end
 
       private def position_cursor
+        return if approval_prompt
         position = cursor_screen_position
         if position
           row, column = position
@@ -203,6 +206,11 @@ module Cri
         prompt + HighlightRenderer.line(content, 0, buffer.highlights, width - panel.prompt.size, styled ? @theme : nil)
       end
 
+      private def approval_line(styled : Bool) : String
+        message = approval_prompt || ""
+        styled ? style(message, "command") : fit(message, width)
+      end
+
       private def style(value : String, group : String) : String
         colors = @theme[group]
         colors ? colors.ansi + fit(value, width) + "\e[0m" : fit(value, width)
@@ -213,12 +221,22 @@ module Cri
       end
 
       private def visible_width(value : String) : Int32
-        value.gsub(/\e\[[0-9; ]*m/, "").size.to_i32
+        CellWidth.of(value.gsub(/\e\[[0-9; ]*m/, ""))
       end
 
       private def fit(value : String, limit : Int32) : String
         safe = value.gsub(/[\x00-\x1f\x7f-\x9f]/, "")
-        safe.size > limit ? safe[0, limit] : safe
+        return safe if CellWidth.of(safe) <= limit
+        String.build do |output|
+          visible = 0
+          safe.each_grapheme do |grapheme|
+            cluster = grapheme.to_s
+            char_width = CellWidth.of(cluster)
+            break if visible + char_width > limit
+            output << cluster
+            visible += char_width
+          end
+        end
       end
     end
   end

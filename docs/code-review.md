@@ -231,7 +231,7 @@ Provider і Runtime достатньо малі. Plugin UI SDK має отрим
 2. Refresh WASM memory після guest allocation. **Зроблено.**
 3. Безпечна tar extraction policy. **Базовий hardening і post-extraction SHA-256 TOCTOU detection зроблено; external tar isolation ще follow-up.**
 4. HTTP effect timeout і byte limit. **Зроблено.**
-5. Collision/ownership checks для plugin resources. **Базові TUI collision/reference checks зроблено; plugin ownership ще follow-up.**
+5. Collision/ownership checks для plugin resources. **Зроблено: extension names обмежені безпечним форматом, дублікати роблять усі однойменні manifests недійсними, а buffers, panels і plugin styles перевіряють власника.**
 
 ### Етап 2 — UI correctness
 
@@ -247,9 +247,9 @@ Provider і Runtime достатньо малі. Plugin UI SDK має отрим
 2. Host action adapter. **Зроблено.**
 3. Serializable UI context. **Зроблено.**
 4. Validated UI effect handlers. **Зроблено для `ui.notification`, buffer create/append/replace, highlight define/set, panel open/focus.**
-5. Namespace/ownership enforcement. **Ще pending для UI resources.**
-6. Zig SDK helpers. **Ще pending.**
-7. End-to-end fixture. **Зроблено для реального Zig/WASM buffer/highlight effects; panel effects ще pending.**
+5. Namespace/ownership enforcement. **Зроблено для UI buffers, panels і plugin styles.**
+6. Zig SDK helpers. **Зроблено для Zig.**
+7. End-to-end fixture. **Зроблено для реального Zig/WASM buffer, highlight і panel effects.**
 
 ### Етап 4 — maintainability
 

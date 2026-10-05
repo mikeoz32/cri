@@ -40,8 +40,11 @@ module Cri
       resolve_existing(expanded) || expanded
     end
 
-    def self.allowed?(path : String, roots : Array(String), create : Bool = false) : Bool
-      roots.any? { |root| within?(path, root, create) }
+    def self.allowed?(path : String, roots : Array(String), create : Bool = false, base : String? = nil) : Bool
+      roots.any? do |root|
+        expanded_root = base ? File.expand_path(root, base.not_nil!) : root
+        within?(path, expanded_root, create)
+      end
     end
   end
 end

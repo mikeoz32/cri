@@ -31,3 +31,19 @@ Example:
 ```
 
 An extension must request a capability in its `extension.toml`, and the grant must also contain it. Both checks are required at runtime.
+
+For the `zig_fetch` example's `zig.workspace_ls` tool, allow workspace reads in
+the project config; the TUI still asks for approval on every listing:
+
+```json
+{
+  "extensions": {
+    "zig_fetch": {
+      "enabled": true,
+      "filesystem_read": ["."],
+      "network": ["https://api.github.com"],
+      "secrets": ["GITHUB_TOKEN"]
+    }
+  }
+}
+```

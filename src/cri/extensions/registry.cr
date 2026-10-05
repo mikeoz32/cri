@@ -15,6 +15,7 @@ module Cri
             @manifests << Manifest.load(path)
           end
         end
+        reject_duplicate_names
         self
       end
 
@@ -28,6 +29,16 @@ module Cri
 
       def find(name : String) : Manifest?
         manifests.find { |m| m.name == name }
+      end
+
+      private def reject_duplicate_names
+        manifests.each do |manifest|
+          next if manifest.name.empty?
+          next unless manifests.count { |candidate| candidate.name == manifest.name } > 1
+          next if manifest.errors.any? { |error| error == "duplicate extension name: #{manifest.name}" }
+
+          manifest.errors << "duplicate extension name: #{manifest.name}"
+        end
       end
     end
   end

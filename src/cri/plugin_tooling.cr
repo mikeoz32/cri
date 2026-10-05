@@ -59,7 +59,7 @@ module Cri
       true
     end
 
-    def test(project : String, input : JSON::Any = JSON.parse("{}")) : Bool
+    def test(project : String, input : RawJSON = RawJSON.new("{}")) : Bool
       return false unless check(project)
       manifest = Extensions::Manifest.load(File.join(project, "extension.toml"), false)
       tool = manifest.tools.first?

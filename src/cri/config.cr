@@ -1,6 +1,15 @@
 require "json"
 
 module Cri
+  class ConfigFile
+    include JSON::Serializable
+
+    property provider : String?
+    property provider_id : String?
+    property auth_flow : String?
+    property auth_flow_id : String?
+  end
+
   class Config
     getter cwd : String
     getter extension_dirs : Array(String)
@@ -30,9 +39,9 @@ module Cri
       auth_flow_id = nil
       if config_path
         begin
-          config = JSON.parse(File.read(config_path))
-          provider_id = config["provider"]?.try(&.as_s?) || config["provider_id"]?.try(&.as_s?)
-          auth_flow_id = config["auth_flow"]?.try(&.as_s?) || config["auth_flow_id"]?.try(&.as_s?)
+          config = ConfigFile.from_json(File.read(config_path))
+          provider_id = config.provider || config.provider_id
+          auth_flow_id = config.auth_flow || config.auth_flow_id
         rescue JSON::ParseException
         end
       end

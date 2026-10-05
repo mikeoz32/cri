@@ -29,6 +29,10 @@ The minimal decision set is only:
 resolves them through `CapabilityBroker#resolve`. Tools, extensions, and guest
 SDKs never receive the resolve path.
 
+The fullscreen TUI acts as this client: it displays the extension, capability,
+and target, then accepts `y` to allow once or `n`/`Esc` to deny. Other host
+contexts keep the deny-by-default backend unless they attach their own client.
+
 Production hosts use `CapabilityBroker.deny_all` unless they explicitly attach
 an approval backend. Tests and deliberately controlled hosts may use
 `allow_all`.

@@ -55,6 +55,8 @@ module Cri
           provider_command(args)
         when "model"
           model_command(args)
+        when "models"
+          model_command("")
         when "session"
           session_command(args)
         when "clear"
@@ -76,6 +78,11 @@ module Cri
           return active
         end
         if model = session.current_model
+          unless host.providers.find(model.provider_id)
+            available = host.providers.all.map(&.id)
+            providers = available.empty? ? "none" : available.join(", ")
+            raise "saved session model '#{model.id}' refers to unavailable provider '#{model.provider_id}'. Available providers: #{providers}. Run :model refresh, then :model <id>, or :session new."
+          end
           @agent = host.agent(host.model(model), session)
         else
           selected = host.default_model
@@ -247,11 +254,11 @@ module Cri
         response.to_json
       end
 
-      private def parse_command_input(args : String) : JSON::Any
-        return JSON.parse("{}") if args.empty?
-        JSON.parse(args)
+      private def parse_command_input(args : String) : RawJSON
+        return RawJSON.new("{}") if args.empty?
+        RawJSON.new(args)
       rescue JSON::ParseException
-        JSON.parse({"args" => args}.to_json)
+        RawJSON.new({"args" => args}.to_json)
       end
     end
   end

@@ -1,5 +1,27 @@
 module Cri
   module Permissions
+    class ExtensionGrantConfig
+      include JSON::Serializable
+
+      property enabled : Bool?
+      property network : Array(String) = [] of String
+      property secrets : Array(String) = [] of String
+      property filesystem_read : Array(String) = [] of String
+      property filesystem_write : Array(String) = [] of String
+      property shell : Bool = false
+      property model : Bool = false
+
+      def to_grant_set : GrantSet
+        GrantSet.new(network, secrets, filesystem_read, filesystem_write, shell, model)
+      end
+    end
+
+    class GrantPolicyConfig
+      include JSON::Serializable
+
+      property extensions : Hash(String, ExtensionGrantConfig) = {} of String => ExtensionGrantConfig
+    end
+
     enum EffectKind
       HttpRequest
       SecretUse
@@ -30,19 +52,7 @@ module Cri
       end
 
       def self.from_json(value : JSON::Any) : self
-        object = value.as_h
-        new(
-          network: string_array(object["network"]?),
-          secrets: string_array(object["secrets"]?),
-          filesystem_read: string_array(object["filesystem_read"]?),
-          filesystem_write: string_array(object["filesystem_write"]?),
-          shell: object["shell"]?.try(&.as_bool) || false,
-          model: object["model"]?.try(&.as_bool) || false
-        )
-      end
-
-      private def self.string_array(value : JSON::Any?) : Array(String)
-        value ? value.as_a.map(&.as_s) : [] of String
+        ExtensionGrantConfig.from_json(value.to_json).to_grant_set
       end
 
       def allows_network?(url : String, requested : Request) : Bool
@@ -57,8 +67,8 @@ module Cri
         requested.secrets.includes?(name) && secrets.includes?(name)
       end
 
-      def allows_file_read?(path : String, requested : Request) : Bool
-        path_allowed?(path, requested.filesystem_read) && path_allowed?(path, filesystem_read)
+      def allows_file_read?(path : String, requested : Request, base : String? = nil) : Bool
+        path_allowed?(path, requested.filesystem_read, base: base) && path_allowed?(path, filesystem_read, base: base)
       end
 
       def allows_file_write?(path : String, requested : Request) : Bool
@@ -90,8 +100,8 @@ module Cri
         end
       end
 
-      private def path_allowed?(path : String, roots : Array(String), create : Bool = false) : Bool
-        PathSecurity.allowed?(path, roots, create)
+      private def path_allowed?(path : String, roots : Array(String), create : Bool = false, base : String? = nil) : Bool
+        PathSecurity.allowed?(path, roots, create, base)
       end
     end
 
@@ -107,9 +117,12 @@ module Cri
         policy = new
         paths.each do |path|
           next unless File.file?(path)
-          policy.merge_json(JSON.parse(File.read(path)))
-        rescue ex
-          policy.errors << "#{path}: #{ex.message || ex.class.name}"
+
+          begin
+            policy.merge(GrantPolicyConfig.from_json(File.read(path)))
+          rescue ex
+            policy.errors << "#{path}: #{ex.message || ex.class.name}"
+          end
         end
         policy
       end
@@ -125,15 +138,17 @@ module Cri
       end
 
       def merge_json(root : JSON::Any)
-        root["extensions"]?.try do |entries|
-          entries.as_h.each do |name, value|
-            if value["enabled"]?.try(&.as_bool) == false
-              disabled[name] = true
-              extensions.delete(name)
-            else
-              disabled.delete(name)
-              extensions[name] = GrantSet.from_json(value)
-            end
+        merge(GrantPolicyConfig.from_json(root.to_json))
+      end
+
+      def merge(config : GrantPolicyConfig)
+        config.extensions.each do |name, entry|
+          if entry.enabled == false
+            disabled[name] = true
+            extensions.delete(name)
+          else
+            disabled.delete(name)
+            extensions[name] = entry.to_grant_set
           end
         end
       end

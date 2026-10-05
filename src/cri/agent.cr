@@ -67,7 +67,7 @@ module Cri
         raise LimitError.new("too many tool calls in one response") if response.tool_calls.size > max_tool_calls_per_step
         response.tool_calls.each do |call|
           raise LimitError.new("tool name is empty") if call.name.empty?
-          raise LimitError.new("tool arguments exceed #{max_tool_argument_bytes} bytes") if call.arguments.to_json.bytesize > max_tool_argument_bytes
+          raise LimitError.new("tool arguments exceed #{max_tool_argument_bytes} bytes") if call.arguments.bytesize > max_tool_argument_bytes
         end
 
         session.add(Message.assistant(response.content, response.tool_calls))

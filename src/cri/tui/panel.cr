@@ -7,6 +7,7 @@ module Cri
       getter position : String
       getter events : EventBus?
       getter editable : Bool
+      getter owner : String
       property focused : Bool
       property scroll : Int32
       property prompt : String
@@ -20,6 +21,7 @@ module Cri
         @prompt : String = "",
         @events : EventBus? = nil,
         @editable : Bool = true,
+        @owner : String = "ui",
       )
         @scroll = 0
         @last_cursor_revision = 0_i64
@@ -56,12 +58,21 @@ module Cri
       end
 
       def cursor_visual_line(buffers : BufferStore, width : Int32) : Int32
+        cursor_visual_position(buffers, width)[0]
+      end
+
+      def cursor_visual_position(buffers : BufferStore, width : Int32) : Tuple(Int32, Int32)
         buffer = buffers.get(buffer_id).as?(TextBuffer)
-        return 0 unless buffer
+        return {0, 0} unless buffer
         cursor_line, cursor_column = buffer.cursor_line_column
         visual = visual_lines(buffers, width)
-        index = visual.index { |entry| entry[2] == cursor_line && cursor_column >= entry[3] && cursor_column <= entry[3] + entry[0].size }
-        index || {visual.size - 1, 0}.max
+        candidates = visual.each_with_index.select { |entry, _index| entry[2] == cursor_line }.to_a
+        return {0, 0} if candidates.empty?
+        selected = candidates.find { |entry, _index| cursor_column < entry[3] + entry[0].size } || candidates.last
+        entry, index = selected
+        line = buffer.lines[cursor_line]? || ""
+        prefix = line.chars[entry[3]...cursor_column].join
+        {index, CellWidth.of(prefix)}
       end
 
       def render_lines(buffers : BufferStore, height : Int32, width : Int32, theme : Theme? = nil) : Array(String)
@@ -100,11 +111,21 @@ module Cri
             entries << {"", offset, source_line.to_i32, 0_i32}
           else
             start = 0
-            while start < chars.size
-              finish = {start + limit, chars.size}.min
-              entries << {chars[start...finish].join, offset + start, source_line.to_i32, start.to_i32}
-              start = finish
+            used = 0
+            codepoint_index = 0
+            line.each_grapheme do |grapheme|
+              cluster = grapheme.to_s
+              cluster_width = CellWidth.of(cluster)
+              cluster_size = cluster.size
+              if used > 0 && used + cluster_width > limit
+                entries << {chars[start...codepoint_index].join, offset + start, source_line.to_i32, start.to_i32}
+                start = codepoint_index
+                used = 0
+              end
+              used += cluster_width
+              codepoint_index += cluster_size
             end
+            entries << {chars[start...codepoint_index].join, offset + start, source_line.to_i32, start.to_i32}
           end
           offset += line.size + 1
         end

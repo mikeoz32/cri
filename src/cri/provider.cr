@@ -7,18 +7,30 @@ module Cri
     end
 
     def to_json_any : JSON::Any
-      JSON.parse({
-        "type"     => "function",
-        "function" => {
-          "name"        => name,
-          "description" => description,
-          "parameters"  => {"type" => "object"},
-        },
-      }.to_json)
+      JSON.parse(to_json)
+    end
+
+    def to_json(json : JSON::Builder) : Nil
+      json.object do
+        json.field "type", "function"
+        json.field "function" do
+          json.object do
+            json.field "name", name
+            json.field "description", description
+            json.field "parameters" do
+              json.object do
+                json.field "type", "object"
+              end
+            end
+          end
+        end
+      end
     end
   end
 
   class ModelSettings
+    include JSON::Serializable
+
     getter reasoning_effort : String?
     getter temperature : Float64?
     getter max_output_tokens : Int64?
@@ -35,19 +47,11 @@ module Cri
     end
 
     def to_json_any : JSON::Any
-      values = {} of String => JSON::Any
-      values["reasoning_effort"] = JSON::Any.new(reasoning_effort) if reasoning_effort
-      values["temperature"] = JSON::Any.new(temperature) if temperature
-      values["max_output_tokens"] = JSON::Any.new(max_output_tokens) if max_output_tokens
-      JSON::Any.new(values)
+      JSON.parse(to_json)
     end
 
     def self.from_json(value : JSON::Any) : ModelSettings
-      new(
-        value["reasoning_effort"]?.try(&.as_s?),
-        value["temperature"]?.try(&.as_f?),
-        value["max_output_tokens"]?.try(&.as_i64?)
-      )
+      from_json(value.to_json)
     end
   end
 

@@ -6,6 +6,7 @@ Dangerous operations are host-mediated. Extensions declare permissions in `exten
 
 - `http.request`
 - `file.read`
+- `filesystem.list`
 - `file.propose_edit`
 - `ui.notification`
 - `ui.status_update`
@@ -51,3 +52,18 @@ The module instance remains alive during this loop and is destroyed when the res
 ## File edits
 
 Extensions cannot write files directly. They can return `file.propose_edit` so the host can show a diff and require approval.
+
+## Workspace directory listing
+
+An extension can ask the host to list a directory with:
+
+```json
+{"type":"filesystem.list","path":"src"}
+```
+
+The host resolves paths from the configured workspace root, rejects paths that
+escape it, checks the extension's requested and configured `filesystem_read`
+scopes, and then requests one-shot `filesystem.list` approval before returning
+entry names and types. The fullscreen TUI shows the requesting extension,
+capability, and target; press `y` to allow once or `n`/`Esc` to deny. A host
+without an interactive approval client denies the request by default.

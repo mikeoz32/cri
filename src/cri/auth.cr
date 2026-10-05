@@ -94,6 +94,27 @@ module Cri
       end
     end
 
+    class StoredCredential
+      include JSON::Serializable
+
+      property provider : String?
+      property flow : String?
+      property secret : String?
+
+      def initialize(@provider : String? = nil, @flow : String? = nil, @secret : String? = nil)
+      end
+    end
+
+    class CredentialFile
+      include JSON::Serializable
+
+      property version : Int32
+      property credentials : Hash(String, StoredCredential) = {} of String => StoredCredential
+
+      def initialize(@version : Int32 = 1, @credentials : Hash(String, StoredCredential) = {} of String => StoredCredential)
+      end
+    end
+
     abstract class CredentialStore
       def self.default : CredentialStore
         FileCredentialStore.new
@@ -171,8 +192,8 @@ module Cri
       def find(provider_id : String, flow_id : String) : CredentialRef?
         with_lock(shared: true) do |records|
           records.each do |id, record|
-            next unless record["provider"]?.try(&.as_s?) == provider_id
-            next unless record["flow"]?.try(&.as_s?) == flow_id
+            next unless record.provider == provider_id
+            next unless record.flow == flow_id
             return CredentialRef.new(id, provider_id, flow_id)
           end
           nil
@@ -194,7 +215,7 @@ module Cri
         "#{path}.lock"
       end
 
-      private def with_lock(shared : Bool = false, & : Hash(String, JSON::Any) -> _)
+      private def with_lock(shared : Bool = false, & : Hash(String, StoredCredential) -> _)
         File.open(lock_path, "a+") do |lock|
           lock.chmod(0o600)
           shared ? lock.flock_shared : lock.flock_exclusive
@@ -206,34 +227,28 @@ module Cri
         end
       end
 
-      private def read_records : Hash(String, JSON::Any)
-        return {} of String => JSON::Any unless File.exists?(path)
-        root = JSON.parse(File.read(path)).as_h
-        version = root["version"]?.try(&.as_i?)
-        raise "unsupported cri auth store version" unless version == VERSION
-        root["credentials"]?.try(&.as_h) || {} of String => JSON::Any
+      private def read_records : Hash(String, StoredCredential)
+        return {} of String => StoredCredential unless File.exists?(path)
+        root = CredentialFile.from_json(File.read(path))
+        raise "unsupported cri auth store version" unless root.version == VERSION
+        root.credentials
       end
 
-      private def record_for(credential : Credential) : JSON::Any
-        JSON.parse({
-          "provider" => credential.ref.provider_id,
-          "flow"     => credential.ref.flow_id,
-          "secret"   => credential.secret,
-        }.to_json)
+      private def record_for(credential : Credential) : StoredCredential
+        StoredCredential.new(credential.ref.provider_id, credential.ref.flow_id, credential.secret)
       end
 
-      private def record_to_credential(ref : CredentialRef, record : JSON::Any?) : Credential?
+      private def record_to_credential(ref : CredentialRef, record : StoredCredential?) : Credential?
         return nil unless record
-        hash = record.as_h
-        secret = hash["secret"]?.try(&.as_s?)
+        secret = record.secret
         secret ? Credential.new(ref, secret) : nil
       end
 
-      private def write_records(records : Hash(String, JSON::Any))
+      private def write_records(records : Hash(String, StoredCredential))
         temporary = "#{path}.tmp-#{Process.pid}-#{Random::Secure.hex(6)}"
         begin
           File.open(temporary, "w", perm: 0o600) do |file|
-            file.print({"version" => VERSION, "credentials" => records}.to_json)
+            file.print(CredentialFile.new(VERSION, records).to_json)
             file.flush
             file.fsync
           end

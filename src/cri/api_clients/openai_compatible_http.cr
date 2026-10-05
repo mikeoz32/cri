@@ -1,5 +1,62 @@
 module Cri
   module APIClients
+    class ChatResponseFunction
+      include JSON::Serializable
+      property name : String
+      property arguments : String
+    end
+
+    class ChatResponseToolCall
+      include JSON::Serializable
+      property id : String
+      property function : ChatResponseFunction
+    end
+
+    class ChatResponseMessage
+      include JSON::Serializable
+      property content : String?
+      property tool_calls : Array(ChatResponseToolCall) = [] of ChatResponseToolCall
+    end
+
+    class ChatResponseChoice
+      include JSON::Serializable
+      property message : ChatResponseMessage
+    end
+
+    class ChatCompletionResponse
+      include JSON::Serializable
+      property choices : Array(ChatResponseChoice) = [] of ChatResponseChoice
+    end
+
+    class ChatStreamFunction
+      include JSON::Serializable
+      property name : String?
+      property arguments : String?
+    end
+
+    class ChatStreamToolCall
+      include JSON::Serializable
+      property index : Int32 = 0
+      property id : String?
+      property function : ChatStreamFunction?
+    end
+
+    class ChatStreamDelta
+      include JSON::Serializable
+      property content : String?
+      property tool_calls : Array(ChatStreamToolCall) = [] of ChatStreamToolCall
+    end
+
+    class ChatStreamChoice
+      include JSON::Serializable
+      property delta : ChatStreamDelta
+    end
+
+    class ChatStreamChunk
+      include JSON::Serializable
+      property choices : Array(ChatStreamChoice) = [] of ChatStreamChoice
+    end
+
     # OpenAI-compatible HTTP/SSE wire client. The enclosing provider,
     # credentials, and provider identity are supplied by the host registry.
     # It intentionally exposes raw JSON so provider adapters own semantics.
@@ -18,9 +75,9 @@ module Cri
         @endpoint = URI.parse(endpoint)
       end
 
-      def chat(payload : JSON::Any) : JSON::Any
-        response = request(payload.to_json)
-        JSON.parse(response)
+      def chat(payload : String) : ChatCompletionResponse
+        response = request(payload)
+        ChatCompletionResponse.from_json(response)
       end
 
       def validate_api_key : Nil
@@ -31,16 +88,12 @@ module Cri
         validation_endpoint = URI.parse(endpoint.to_s.sub(/\/chat\/completions\z/, "/models"))
         response = transport.request("GET", validation_endpoint, authorization_headers, nil)
         raise ApiError.new(response.status, response.body) unless response.status.in?(200...300)
-        JSON.parse(response.body)["data"].as_a.compact_map do |entry|
-          entry["id"]?.try(&.as_s?)
-        end
+        ModelListResponse.from_json(response.body).data.compact_map(&.id)
       end
 
-      def chat_stream(payload : JSON::Any, &block : JSON::Any -> Nil) : Nil
-        payload_hash = payload.as_h
-        payload_hash["stream"] = JSON::Any.new(true)
+      def chat_stream(payload : String, &block : ChatStreamChunk -> Nil) : Nil
         completed = false
-        stream_request(payload_hash.to_json) do |line|
+        stream_request(payload) do |line|
           data = line
           next if data.empty?
           if data == "[DONE]"
@@ -49,8 +102,8 @@ module Cri
           end
           next if completed
           begin
-            block.call(JSON.parse(data))
-          rescue ex : JSON::ParseException
+            block.call(ChatStreamChunk.from_json(data))
+          rescue ex : JSON::ParseException | JSON::SerializableError
             raise StreamError.new("invalid OpenAI SSE JSON: #{ex.message}")
           end
         end
@@ -80,6 +133,17 @@ module Cri
         headers["Accept"] = "text/event-stream"
         headers
       end
+    end
+
+    class ModelListResponse
+      include JSON::Serializable
+
+      class Item
+        include JSON::Serializable
+        property id : String?
+      end
+
+      property data : Array(Item) = [] of Item
     end
 
     class ApiError < Exception

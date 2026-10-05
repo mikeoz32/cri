@@ -183,6 +183,7 @@ module Cri
 
       def validate(require_wasm : Bool = true)
         errors << "name is required" if name.empty?
+        errors << "name must start with a letter or digit and contain only letters, digits, underscores, dots, or hyphens" unless name.matches?(/\A[A-Za-z0-9][A-Za-z0-9_.-]*\z/)
         errors << "version is required" if version.empty?
         errors << "abi must be #{Cri::ABI_VERSION}" unless abi == Cri::ABI_VERSION
         all_contributions.each do |c|

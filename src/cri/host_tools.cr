@@ -1,4 +1,14 @@
 module Cri
+  class ReadFileInput
+    include JSON::Serializable
+    property path : String
+  end
+
+  class ListFilesInput
+    include JSON::Serializable
+    property path : String = "."
+  end
+
   class ReadFileTool < Tool
     getter cwd : String
 
@@ -7,11 +17,11 @@ module Cri
       super("builtin.read_file", "Read a file inside the project")
     end
 
-    def call(input : JSON::Any) : ToolResult
-      path = input["path"].as_s
+    def call(input : RawJSON) : ToolResult
+      path = ReadFileInput.from_json(input.raw).path
       full_path = safe_path(path)
       return ToolResult.new(false, nil, "path is outside project: #{path}") unless full_path
-      ToolResult.new(true, JSON.parse({"path" => path, "content" => File.read(full_path)}.to_json))
+      ToolResult.new(true, RawJSON.new({"path" => path, "content" => File.read(full_path)}.to_json))
     rescue ex
       ToolResult.new(false, nil, ex.message || ex.class.name)
     end
@@ -30,14 +40,14 @@ module Cri
       super("builtin.list_files", "List project files")
     end
 
-    def call(input : JSON::Any) : ToolResult
-      relative = input["path"]?.try(&.as_s) || "."
+    def call(input : RawJSON) : ToolResult
+      relative = ListFilesInput.from_json(input.raw).path
       full_path = PathSecurity.resolve_existing(relative, cwd)
       return ToolResult.new(false, nil, "path is outside project: #{relative}") unless full_path && PathSecurity.within?(full_path, cwd)
       return ToolResult.new(false, nil, "not a directory: #{relative}") unless Dir.exists?(full_path)
 
       files = Dir.children(full_path).sort.reject { |name| name.starts_with?(".") }
-      ToolResult.new(true, JSON.parse({"path" => relative, "entries" => files}.to_json))
+      ToolResult.new(true, RawJSON.new({"path" => relative, "entries" => files}.to_json))
     rescue ex
       ToolResult.new(false, nil, ex.message || ex.class.name)
     end

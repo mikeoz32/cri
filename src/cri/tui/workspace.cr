@@ -67,11 +67,11 @@ module Cri
         events.try { |bus| bus.emit(Event.new(name, JSON.parse(data.to_json), id)) }
       end
 
-      def add_panel(id : String, buffer_id : String, title : String, position : String = "right", focused : Bool = false, prompt : String = "", editable : Bool = true) : Panel
+      def add_panel(id : String, buffer_id : String, title : String, position : String = "right", focused : Bool = false, prompt : String = "", editable : Bool = true, owner : String = "ui") : Panel
         if checker = buffer_exists
           raise "unknown buffer: #{buffer_id}" unless checker.call(buffer_id)
         end
-        panel = Panel.new(id, buffer_id, title, position, false, prompt, events, editable)
+        panel = Panel.new(id, buffer_id, title, position, false, prompt, events, editable, owner)
         panels.register(panel)
         emit("workspace.changed", {"panel_id" => id})
         focus(id) if focused

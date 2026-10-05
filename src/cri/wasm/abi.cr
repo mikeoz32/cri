@@ -17,10 +17,14 @@ module Cri
       property abi : String = Cri::ABI_VERSION
       property kind : String
       property name : String
-      property input : JSON::Any
+      property input : RawJSON
       property context : CallContext
 
-      def initialize(@kind : String, @name : String, @input : JSON::Any, @context : CallContext = CallContext.new)
+      def initialize(@kind : String, @name : String, @input : RawJSON, @context : CallContext = CallContext.new)
+      end
+
+      def initialize(kind : String, name : String, input : JSON::Any, context : CallContext = CallContext.new)
+        initialize(kind, name, RawJSON.from_any(input), context)
       end
     end
 
@@ -28,11 +32,19 @@ module Cri
       include JSON::Serializable
 
       property ok : Bool
-      property result : JSON::Any?
-      property effects : Array(JSON::Any)
+      property result : RawJSON?
+      property effects : Array(Effects::Effect)
       property error : String?
 
-      def initialize(@ok : Bool, @result : JSON::Any? = nil, @effects = [] of JSON::Any, @error : String? = nil)
+      def initialize(@ok : Bool, @result : RawJSON? = nil, @effects = [] of Effects::Effect, @error : String? = nil)
+      end
+
+      def initialize(ok : Bool, result : JSON::Any, effects = [] of JSON::Any, error : String? = nil)
+        initialize(ok, RawJSON.from_any(result), effects.map { |effect| Effects::Effect.from_json(effect.to_json) }, error)
+      end
+
+      def initialize(ok : Bool, result : Nil, effects : Array(JSON::Any), error : String? = nil)
+        initialize(ok, nil, effects.map { |effect| Effects::Effect.from_json(effect.to_json) }, error)
       end
     end
   end

@@ -8,7 +8,7 @@ wasm = "plugin.wasm"
 [permissions]
 network = ["https://api.github.com"]
 secrets = ["GITHUB_TOKEN"]
-filesystem_read = []
+filesystem_read = ["."]
 filesystem_write = []
 shell = false
 model = false
@@ -16,4 +16,9 @@ model = false
 [[tools]]
 name = "zig.fetch"
 description = "Fetch a GitHub issue through a host-mediated HTTP effect"
+entrypoint = "cri_call"
+
+[[tools]]
+name = "zig.workspace_ls"
+description = "List one directory through the host workspace API"
 entrypoint = "cri_call"

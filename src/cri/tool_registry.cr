@@ -2,7 +2,11 @@ module Cri
   abstract class ToolExecutor
     abstract def names : Array(String)
     abstract def specs : Array(ToolSpec)
-    abstract def call(name : String, input : JSON::Any) : ToolResult
+    abstract def call(name : String, input : RawJSON) : ToolResult
+
+    def call(name : String, input : JSON::Any) : ToolResult
+      call(name, RawJSON.from_any(input))
+    end
   end
 
   class ToolRegistry < ToolExecutor
@@ -27,7 +31,7 @@ module Cri
       tools.values.sort_by(&.name).map { |tool| ToolSpec.new(tool.name, tool.description) }
     end
 
-    def call(name : String, input : JSON::Any) : ToolResult
+    def call(name : String, input : RawJSON) : ToolResult
       tool = @tools[name]?
       return ToolResult.new(false, nil, "unknown tool: #{name}") unless tool
       tool.call(input)

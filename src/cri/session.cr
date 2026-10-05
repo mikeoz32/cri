@@ -1,4 +1,56 @@
 module Cri
+  class SessionModelRef
+    include JSON::Serializable
+
+    property id : String
+    property provider_id : String
+    property model : String
+    property title : String?
+    property auth_flow_id : String?
+    property api_type : String? = ""
+    property endpoint : String?
+
+    @[JSON::Field(key: "transport")]
+    property transport_type : String? = "http"
+
+    def initialize(
+      @id : String,
+      @provider_id : String,
+      @model : String,
+      @title : String? = nil,
+      @auth_flow_id : String? = nil,
+      @api_type : String? = "",
+      @endpoint : String? = nil,
+      @transport_type : String? = "http",
+    )
+    end
+
+    def self.from_model(ref : ModelRef) : self
+      new(ref.id, ref.provider_id, ref.model, ref.title, ref.auth_flow_id, ref.api_type, ref.endpoint, ref.transport_type)
+    end
+
+    def to_model_ref : ModelRef
+      ModelRef.new(id, provider_id, model, title || model, auth_flow_id, api_type || "", endpoint, transport_type || "http")
+    end
+  end
+
+  class SessionFile
+    include JSON::Serializable
+
+    property id : String
+    property current_model : SessionModelRef?
+    property settings : ModelSettings = ModelSettings.new
+    property messages : Array(Message) = [] of Message
+
+    def initialize(
+      @id : String,
+      @current_model : SessionModelRef? = nil,
+      @settings : ModelSettings = ModelSettings.new,
+      @messages : Array(Message) = [] of Message,
+    )
+    end
+  end
+
   class Session
     getter id : String
     getter messages = [] of Message
@@ -30,28 +82,36 @@ module Cri
       messages.clear
     end
 
-    def api_messages : Array(JSON::Any)
-      messages.map(&.to_api_json)
+    def api_messages : Array(Message)
+      messages
+    end
+
+    def to_json : String
+      SessionFile.new(
+        id,
+        current_model.try { |model| SessionModelRef.from_model(model) },
+        settings,
+        messages
+      ).to_json
     end
 
     def to_json_any : JSON::Any
-      JSON.parse({
-        "id"            => id,
-        "current_model" => current_model.try(&.to_json_any),
-        "settings"      => settings.to_json_any,
-        "messages"      => messages.map(&.to_api_json),
-      }.to_json)
+      json = to_json
+      JSON.parse(json)
     end
 
     def self.from_json(value : JSON::Any) : Session
+      from_json(value.to_json)
+    end
+
+    def self.from_json(json : String) : Session
+      record = SessionFile.from_json(json)
       session = new(
-        value["id"].as_s,
-        value["current_model"]?.try { |model| ModelRef.from_json(model) },
-        ModelSettings.from_json(value["settings"]? || JSON.parse("{}"))
+        record.id,
+        record.current_model.try(&.to_model_ref),
+        record.settings
       )
-      value["messages"]?.try(&.as_a).try do |items|
-        items.each { |item| session.add(Message.from_json(item)) }
-      end
+      record.messages.each { |item| session.add(item) }
       session
     end
   end

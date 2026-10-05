@@ -33,9 +33,7 @@
             rounds += 1
             return failure("effect loop exceeded #{MAX_EFFECT_ROUNDS} rounds") if rounds > MAX_EFFECT_ROUNDS
 
-            results = response.effects.map do |effect|
-              JSON.parse(handler.handle(effect).to_json)
-            end
+            results = response.effects.map { |effect| RawJSON.new(handler.handle(effect).to_json) }
             response = invocation.resume(request, results)
           end
 
@@ -47,7 +45,7 @@
         end
 
         private def failure(message : String) : ResponseEnvelope
-          ResponseEnvelope.new(false, nil, [] of JSON::Any, message)
+          ResponseEnvelope.new(false, nil, [] of Effects::Effect, message)
         end
 
         private class Invocation
@@ -105,11 +103,11 @@
             invoke(@call_function, request)
           end
 
-          def resume(original : RequestEnvelope, results : Array(JSON::Any)) : ResponseEnvelope
+          def resume(original : RequestEnvelope, results : Array(RawJSON)) : ResponseEnvelope
             function = @resume_function
             raise "WASM module has effects but does not export cri_resume" unless function
 
-            input = JSON.parse({
+            input = RawJSON.new({
               "results" => results,
             }.to_json)
             request = RequestEnvelope.new("resume", original.name, input, original.context)

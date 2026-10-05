@@ -28,7 +28,7 @@ module Cri
           ui.begin_insert || ui.set_activity("panel is read-only\n", "activity")
         when "mode.append"
           if ui.begin_insert
-            ui.focused_buffer.not_nil!.cursor += 1
+            ui.focused_buffer.not_nil!.move_right
           else
             ui.set_activity("panel is read-only\n", "activity")
           end
@@ -54,13 +54,29 @@ module Cri
         when "input.backspace"
           ui.focused_buffer.try(&.backspace)
         when "input.cursor_left", "buffer.cursor_left"
-          ui.focused_buffer.try { |buffer| buffer.cursor -= 1 }
+          ui.focused_buffer.try(&.move_left)
         when "input.cursor_right", "buffer.cursor_right"
-          ui.focused_buffer.try { |buffer| buffer.cursor += 1 }
+          ui.focused_buffer.try(&.move_right)
         when "buffer.cursor_up"
           ui.focused_buffer.try { |buffer| buffer.move_vertical(-1) }
         when "buffer.cursor_down"
           ui.focused_buffer.try { |buffer| buffer.move_vertical(1) }
+        when "buffer.line_start"
+          ui.focused_buffer.try(&.move_line_start)
+        when "buffer.first_nonblank"
+          ui.focused_buffer.try(&.move_first_nonblank)
+        when "buffer.line_end"
+          ui.focused_buffer.try(&.move_line_end)
+        when "buffer.word_forward"
+          ui.focused_buffer.try(&.move_word_forward)
+        when "buffer.word_backward"
+          ui.focused_buffer.try(&.move_word_backward)
+        when "buffer.word_end"
+          ui.focused_buffer.try(&.move_word_end)
+        when "buffer.document_start"
+          ui.focused_buffer.try(&.move_document_start)
+        when "buffer.document_end"
+          ui.focused_buffer.try(&.move_document_end)
         when "history.previous"
           history_up
         when "history.next"

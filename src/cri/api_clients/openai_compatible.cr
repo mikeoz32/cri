@@ -1,5 +1,33 @@
 module Cri
   module APIClients
+    class ChatCompletionsRequest
+      include JSON::Serializable
+
+      property model : String
+      property messages : Array(Message)
+      property stream : Bool
+
+      @[JSON::Field(ignore_serialize: tools.empty?)]
+      property tools : Array(ToolSpec) = [] of ToolSpec
+
+      property reasoning_effort : String?
+      property temperature : Float64?
+
+      @[JSON::Field(key: "max_tokens")]
+      property max_output_tokens : Int64?
+
+      def initialize(
+        @model : String,
+        @messages : Array(Message),
+        @stream : Bool,
+        @tools : Array(ToolSpec) = [] of ToolSpec,
+        @reasoning_effort : String? = nil,
+        @temperature : Float64? = nil,
+        @max_output_tokens : Int64? = nil,
+      )
+      end
+    end
+
     # OpenAI-compatible API client. Provider identity/configuration lives in
     # ProviderRegistration and ProviderRuntime.
     class OpenAICompatible < APIClient
@@ -36,70 +64,58 @@ module Cri
         tool_call_parts = {} of Int32 => NamedTuple(id: String, name: String, arguments: String)
         content = String.build do |output|
           client.chat_stream(payload(messages, tools, settings, true)) do |chunk|
-            choice = chunk["choices"]?.try(&.as_a.first?)
+            choice = chunk.choices.first?
             next unless choice
-            delta = choice["delta"]
-            text = delta["content"]?.try(&.as_s?)
+            delta = choice.delta
+            text = delta.content
             if text
               output << text
               emit_stream_text(text)
             end
 
-            delta["tool_calls"]?.try do |raw_calls|
-              raw_calls.as_a.each do |raw_call|
-                index = raw_call["index"]?.try(&.as_i) || 0
-                previous = tool_call_parts[index]?
-                function = raw_call["function"]?
-                id = raw_call["id"]?.try(&.as_s) || previous.try(&.[:id]) || "stream-call-#{index}"
-                name = function.try { |value| value["name"]?.try(&.as_s) } || previous.try(&.[:name]) || ""
-                arguments = function.try { |value| value["arguments"]?.try(&.as_s) } || ""
-                if previous
-                  arguments = previous[:arguments] + arguments
-                end
-                tool_call_parts[index] = {id: id, name: name, arguments: arguments}
+            delta.tool_calls.each do |raw_call|
+              index = raw_call.index
+              previous = tool_call_parts[index]?
+              function = raw_call.function
+              id = raw_call.id || previous.try(&.[:id]) || "stream-call-#{index}"
+              name = function.try(&.name) || previous.try(&.[:name]) || ""
+              arguments = function.try(&.arguments) || ""
+              if previous
+                arguments = previous[:arguments] + arguments
               end
+              tool_call_parts[index] = {id: id, name: name, arguments: arguments}
             end
           end
         end
 
         calls = tool_call_parts.keys.sort.map do |index|
           part = tool_call_parts[index]
-          arguments = JSON.parse(part[:arguments])
-          ToolCall.new(part[:id], part[:name], arguments)
+          ToolCall.new(part[:id], part[:name], RawJSON.new(part[:arguments]))
         end
         AssistantResponse.new(content.empty? ? nil : content, calls)
-      rescue JSON::ParseException
+      rescue JSON::ParseException | JSON::SerializableError
         raise "invalid streamed OpenAI tool call arguments"
       end
 
-      private def payload(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings, stream : Bool) : JSON::Any
-        body = JSON.parse({
-          "model"    => model,
-          "messages" => messages.map(&.to_api_json),
-          "stream"   => stream,
-        }.to_json).as_h
-        body["tools"] = JSON::Any.new(tools.map(&.to_json_any)) unless tools.empty?
-        settings.reasoning_effort.try { |effort| body["reasoning_effort"] = JSON::Any.new(effort) }
-        settings.temperature.try { |temperature| body["temperature"] = JSON::Any.new(temperature) }
-        settings.max_output_tokens.try { |limit| body["max_tokens"] = JSON::Any.new(limit) }
-        JSON::Any.new(body)
+      private def payload(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings, stream : Bool) : String
+        ChatCompletionsRequest.new(
+          model,
+          messages,
+          stream,
+          tools,
+          settings.reasoning_effort,
+          settings.temperature,
+          settings.max_output_tokens
+        ).to_json
       end
 
-      private def parse_response(root : JSON::Any) : AssistantResponse
-        message = root["choices"][0]["message"]
-        content = message["content"]?.try(&.as_s?)
-        calls = [] of ToolCall
-
-        message["tool_calls"]?.try do |tool_calls|
-          tool_calls.as_a.each do |raw_call|
-            function = raw_call["function"]
-            arguments = JSON.parse(function["arguments"].as_s)
-            calls << ToolCall.new(raw_call["id"].as_s, function["name"].as_s, arguments)
-          end
+      private def parse_response(root : ChatCompletionResponse) : AssistantResponse
+        message = root.choices.first?.try(&.message) || raise "invalid OpenAI response: missing choices"
+        calls = message.tool_calls.map do |raw_call|
+          ToolCall.new(raw_call.id, raw_call.function.name, RawJSON.new(raw_call.function.arguments))
         end
-
-        AssistantResponse.new(content, calls)
-      rescue ex : JSON::ParseException
+        AssistantResponse.new(message.content, calls)
+      rescue ex : JSON::ParseException | JSON::SerializableError
         raise "invalid OpenAI response: #{ex.message}"
       end
     end

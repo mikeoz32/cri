@@ -28,7 +28,7 @@ describe "HTTP effects" do
     begin
       result = http_effect_handler(address.port).handle(http_request_effect(address.port, "/"))
       result.ok.should be_true
-      result.result.not_nil!["body"].as_s.should eq("ok")
+      JSON.parse(result.result.not_nil!.raw)["body"].as_s.should eq("ok")
     ensure
       server.close
     end

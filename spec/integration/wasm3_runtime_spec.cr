@@ -18,7 +18,7 @@ require "../spec_helper"
       response = Cri::Wasm::Wasm3Runtime.new.run(manifest, request, handler)
 
       response.ok.should be_true
-      response.result.not_nil!["resumed"].as_bool.should be_true
+      JSON.parse(response.result.not_nil!.raw)["resumed"].as_bool.should be_true
     end
 
     it "runs a real Zig freestanding plugin" do
@@ -29,6 +29,25 @@ require "../spec_helper"
 
       response.ok.should be_true
       response.result.not_nil!.as_a.first["type"].as_s.should eq("http.request")
+    end
+
+    it "runs an extension tool that calls the host workspace listing API" do
+      manifest = Cri::Extensions::Manifest.load("examples/extensions/zig_fetch/extension.toml")
+      request = Cri::Wasm::RequestEnvelope.new("tool", "zig.workspace_ls", JSON.parse(%({"path":"spec/unit"})))
+      grants = Cri::Permissions::GrantSet.new(filesystem_read: ["."])
+      handler = Cri::Effects::Handler.new(
+        grants,
+        manifest.permissions,
+        capabilities: Cri::API::CapabilityBroker.allow_all,
+        workspace_root: Dir.current
+      )
+      response = Cri::Wasm::Wasm3Runtime.new.run(manifest, request, handler)
+
+      response.ok.should be_true
+      effect_result = response.result.not_nil!.as_a.first
+      effect_result["type"].as_s.should eq("filesystem.list")
+      effect_result["ok"].as_bool.should be_true
+      effect_result["result"]["entries"].as_a.should_not be_empty
     end
 
     it "runs a real Zig UI action and creates an owner-namespaced buffer" do

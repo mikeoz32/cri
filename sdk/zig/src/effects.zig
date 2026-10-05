@@ -35,6 +35,13 @@ pub fn read_file(path: []const u8, output: []u8) []const u8 {
     return output[0..index];
 }
 
+pub fn list_directory(path: []const u8, output: []u8) []const u8 {
+    var index = append(output, 0, "{\"type\":\"filesystem.list\",\"path\":\"");
+    index = append_escaped(output, index, path);
+    index = append(output, index, "\"}");
+    return output[0..index];
+}
+
 pub fn propose_edit(path: []const u8, content: []const u8, output: []u8) []const u8 {
     var index = append(output, 0, "{\"type\":\"file.propose_edit\",\"path\":\"");
     index = append_escaped(output, index, path);

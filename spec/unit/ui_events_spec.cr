@@ -1,4 +1,5 @@
 require "../spec_helper"
+require "file_utils"
 
 class UiEventNoopProvider < Cri::Provider
   def complete(messages : Array(Cri::Message), tools : Array(Cri::ToolSpec)) : Cri::AssistantResponse
@@ -32,51 +33,71 @@ describe Cri::Tui::EventHandler do
 
   it "returns control to input while a model request is running" do
     ui = Cri::Tui::UiRuntime.new
-    controller = Cri::Tui::Controller.new(Cri::Host.new, UiEventSlowProvider.new)
-    handler = Cri::Tui::EventHandler.new(ui, controller)
+    root = "/tmp/cri-ui-events-#{Process.pid}-#{Random.rand(1_000_000)}"
+    Dir.mkdir(root)
+    begin
+      host = Cri::Host.new(Cri::Config.new(root, [] of String, Cri::Permissions::GrantPolicy.default))
+      controller = Cri::Tui::Controller.new(host, UiEventSlowProvider.new)
+      handler = Cri::Tui::EventHandler.new(ui, controller)
 
-    ui.workspace.focus("input")
-    handler.handle(Cri::Tui::KeyEvent.character("i")) { }
-    handler.handle(Cri::Tui::KeyEvent.character("h")) { }
-    handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }.should be_true
-    sleep 50.milliseconds
+      ui.workspace.focus("input")
+      handler.handle(Cri::Tui::KeyEvent.character("i")) { }
+      handler.handle(Cri::Tui::KeyEvent.character("h")) { }
+      handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }.should be_true
+      sleep 50.milliseconds
 
-    ui.transcript.content.should contain("async response")
-    ui.workspace.status.should eq("ready")
+      ui.transcript.content.should contain("async response")
+      ui.workspace.status.should eq("ready")
+    ensure
+      FileUtils.rm_rf(root)
+    end
   end
 
   it "routes command mode through the controller" do
     ui = Cri::Tui::UiRuntime.new
-    controller = Cri::Tui::Controller.new(Cri::Host.new, UiEventNoopProvider.new)
-    handler = Cri::Tui::EventHandler.new(ui, controller)
+    root = "/tmp/cri-ui-events-#{Process.pid}-#{Random.rand(1_000_000)}"
+    Dir.mkdir(root)
+    begin
+      host = Cri::Host.new(Cri::Config.new(root, [] of String, Cri::Permissions::GrantPolicy.default))
+      controller = Cri::Tui::Controller.new(host, UiEventNoopProvider.new)
+      handler = Cri::Tui::EventHandler.new(ui, controller)
 
-    handler.handle(Cri::Tui::KeyEvent.character(":")) { }
-    "session".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
-    handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
+      handler.handle(Cri::Tui::KeyEvent.character(":")) { }
+      "session".each_char { |char| handler.handle(Cri::Tui::KeyEvent.character(char.to_s)) { } }
+      handler.handle(Cri::Tui::KeyEvent.new(Cri::Tui::Key::Enter)) { }
 
-    ui.mode.should eq(Cri::Tui::Mode::Normal)
-    ui.transcript.content.should contain("session:")
+      ui.mode.should eq(Cri::Tui::Mode::Normal)
+      ui.transcript.content.should contain("session:")
+    ensure
+      FileUtils.rm_rf(root)
+    end
   end
 
   it "switches the session model and preserves its model reference" do
-    auth = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
-    host = Cri::Host.new(auth: auth)
-    host.providers.register(Cri::ProviderRegistration.new(
-      "openrouter",
-      "OpenRouter",
-      "openai",
-      "https://example.test/v1/chat/completions",
-      "openai/gpt-4o",
-      "http+sse",
-      [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)],
-      "test",
-      [Cri::ModelRef.new("openrouter/gpt-4o", "openrouter", "openai/gpt-4o", "GPT-4o")]
-    ))
-    controller = Cri::Tui::Controller.new(host, host.provider("openrouter"))
+    root = "/tmp/cri-ui-events-#{Process.pid}-#{Random.rand(1_000_000)}"
+    Dir.mkdir(root)
+    begin
+      auth = Cri::Auth::Broker.new(Cri::Auth::MemoryCredentialStore.new)
+      host = Cri::Host.new(Cri::Config.new(root, [] of String, Cri::Permissions::GrantPolicy.default), auth: auth)
+      host.providers.register(Cri::ProviderRegistration.new(
+        "openrouter",
+        "OpenRouter",
+        "openai",
+        "https://example.test/v1/chat/completions",
+        "openai/gpt-4o",
+        "http+sse",
+        [Cri::Auth::Flow.new("api-key", Cri::Auth::FlowKind::ApiToken)],
+        "test",
+        [Cri::ModelRef.new("openrouter/gpt-4o", "openrouter", "openai/gpt-4o", "GPT-4o")]
+      ))
+      controller = Cri::Tui::Controller.new(host, host.provider("openrouter"))
 
-    controller.submit("/model openrouter/gpt-4o") { }
+      controller.submit("/model openrouter/gpt-4o") { }
 
-    controller.session.current_model.not_nil!.id.should eq("openrouter/gpt-4o")
+      controller.session.current_model.not_nil!.id.should eq("openrouter/gpt-4o")
+    ensure
+      FileUtils.rm_rf(root)
+    end
   end
 
   it "collects API tokens in a masked TUI prompt without transcript leakage" do

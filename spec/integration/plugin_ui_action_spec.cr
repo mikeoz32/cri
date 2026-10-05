@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 class UiNotificationRuntime < Cri::Wasm::Runtime
-  getter last_input : JSON::Any?
+  getter last_input : Cri::RawJSON?
 
   def call(manifest : Cri::Extensions::Manifest, request : Cri::Wasm::RequestEnvelope) : Cri::Wasm::ResponseEnvelope
     @last_input = request.input
@@ -28,8 +28,9 @@ describe "plugin UI action contract" do
     bridge.register_all.should eq(["fixture.notify"])
     ui.actions.dispatch("fixture.notify", Cri::Tui::ActionContext.new(ui, Cri::Tui::KeyEvent.character("x"), "fixture.notify")).should be_true
 
-    runtime.last_input.not_nil!["action"].as_s.should eq("fixture.notify")
-    runtime.last_input.not_nil!["focus"]["panel_id"].as_s.should eq("transcript")
+    input = JSON.parse(runtime.last_input.not_nil!.raw)
+    input["action"].as_s.should eq("fixture.notify")
+    input["focus"]["panel_id"].as_s.should eq("transcript")
     ui.activity.content.should contain("hello from plugin")
   end
 

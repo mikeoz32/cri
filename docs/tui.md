@@ -2,7 +2,7 @@
 
 Interactive terminals use `Tui::Application`; pipes use the line shell.
 `UiRuntime` owns buffers, workspaces and an application-scoped EventBus.
-Buffers own content, a character-index cursor, and named highlight regions; panels reference buffers and own scroll/focus/viewport.
+Buffers own content, a codepoint-offset cursor constrained to grapheme boundaries, and named highlight regions; panels reference buffers and own scroll/focus/viewport.
 
 ## Buffer, panel, and style model
 
@@ -34,8 +34,7 @@ Text never contains ANSI styling. The renderer maps named groups through `Theme`
 The focused buffer determines the current mode and owns the visible terminal cursor. The cursor is rendered in every focused text panel, including read-only Conversation and Activity panels. The default Conversation and Activity panels are read-only; Prompt is editable. `i`/`a` enters INSERT only for the currently focused editable panel and never changes focus. Use `Ctrl-W j` to focus Prompt, then `i` to edit it. Escape returns the focused buffer to NORMAL but preserves focus. `:` is the separate command-line operation: it temporarily focuses Prompt and restores the prior panel after dispatch or Escape.
 
 - INSERT/COMMAND: text, Backspace, Left/Right; Enter submits. INSERT uses a bar cursor.
-- NORMAL: i/a enters INSERT; j/k scrolls. NORMAL uses a block cursor.
-  `h`/`j`/`k`/`l` move the focused buffer cursor left/down/up/right, including in read-only panels. Cursor movement automatically adjusts the focused panel viewport. `Ctrl-Y`/`Ctrl-E` scroll the focused panel up/down. Ctrl-W h/j/k/l moves focus left/down/up/right between panels, including Prompt. `v` enters VISUAL mode, movement extends the selection, and `y` copies it through the host clipboard capability. Prompt submission is only active while Prompt itself is focused; other editable panels do not submit the Prompt on Enter. Model turns run in a separate Crystal fiber so input/render dispatch remains responsive while provider I/O yields.
+- NORMAL: i/a enters INSERT. NORMAL uses a block cursor. `h`/`j`/`k`/`l` move by grapheme or terminal-cell column; `0`/`^`/`$` move to line start, first nonblank, or line end; `w`/`b`/`e` move by word; `gg`/`G` move to buffer start/end. These motions also work in VISUAL mode and extend the selection. Cursor movement automatically adjusts the focused panel viewport. `Ctrl-Y`/`Ctrl-E` scroll the focused panel up/down. Ctrl-W h/j/k/l moves focus left/down/up/right between panels, including Prompt. `v` enters VISUAL mode and `y` copies the selection through the host clipboard capability. Prompt submission is only active while Prompt itself is focused; other editable panels do not submit the Prompt on Enter. Model turns run in a separate Crystal fiber so input/render dispatch remains responsive while provider I/O yields.
 - COMMAND uses an underline cursor.
   Ctrl-U/Ctrl-D pages; colon enters COMMAND.
 - q and Tab are unbound. Use :q or :quit to exit.
@@ -70,9 +69,7 @@ Terminal control bytes in displayed content are stripped.
 
 ## Current limitations
 
-Agent execution is still synchronous with input dispatch: keyboard cancellation
-while waiting for a model needs an asynchronous task/cancellation layer.
-Terminal dimensions use `stty size` with COLUMNS/LINES fallback; the application polls for resize. Display-cell widths for wide/combining Unicode remain to implement.
+Terminal dimensions use `stty size` with COLUMNS/LINES fallback; the application polls for resize. Rendering uses Crystal's grapheme segmentation and Unicode mark categories alongside terminal-cell width rules for East Asian wide characters and emoji sequences. Ambiguous-width symbols can still vary by terminal/font.
 Input history/command entry still uses the built-in input buffer; arbitrary
 editable extension panels need explicit input routing. Unicode editing uses
 codepoints, not grapheme clusters. Public mutable stores can bypass events.

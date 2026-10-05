@@ -25,8 +25,8 @@ class LargeResultTool < Cri::Tool
     super("large.result", "Return a large result")
   end
 
-  def call(input : JSON::Any) : Cri::ToolResult
-    Cri::ToolResult.new(true, JSON.parse({"content" => "x" * 100}.to_json))
+  def call(input : Cri::RawJSON) : Cri::ToolResult
+    Cri::ToolResult.new(true, Cri::RawJSON.new({"content" => "x" * 100}.to_json))
   end
 end
 

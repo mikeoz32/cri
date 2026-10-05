@@ -109,7 +109,7 @@ describe Cri::APIClients::OpenAICompatible do
     client.complete([] of Cri::Message, [] of Cri::ToolSpec).content.should eq("hello")
     tool_response = client.complete([] of Cri::Message, [Cri::ToolSpec.new("demo.tool", "Demo tool")])
     tool_response.tool_calls.first.name.should eq("demo.tool")
-    tool_response.tool_calls.first.arguments["value"].as_i.should eq(42)
+    JSON.parse(tool_response.tool_calls.first.arguments.raw)["value"].as_i.should eq(42)
 
     chunks = [] of String
     response = client.complete_stream([] of Cri::Message, [] of Cri::ToolSpec) { |chunk| chunks << chunk }

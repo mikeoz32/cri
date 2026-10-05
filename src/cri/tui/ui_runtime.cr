@@ -187,6 +187,11 @@ module Cri
       end
 
       private def resolve_ui_group(group : String, owner : String) : String
+        if group.starts_with?("plugin:")
+          own_prefix = "plugin:#{owner}:"
+          raise "unknown UI highlight style: #{group}" unless group.starts_with?(own_prefix) && theme[group]
+          return group
+        end
         return group if theme[group]
         resolved = plugin_style_id(group, owner)
         raise "unknown UI highlight style: #{group}" unless theme[resolved]
@@ -200,13 +205,14 @@ module Cri
       def open_ui_panel(id : String, buffer_id : String, title : String, position : String, focus : Bool, owner : String) : String
         plugin_buffer(buffer_id, owner)
         panel_id = plugin_panel_id(id, owner)
-        workspace.add_panel(panel_id, plugin_buffer_id(buffer_id, owner), title, position, focus)
+        workspace.add_panel(panel_id, plugin_buffer_id(buffer_id, owner), title, position, focus, owner: owner)
         panel_id
       end
 
       def focus_ui_panel(id : String, owner : String) : String
         panel_id = plugin_panel_id(id, owner)
-        raise "unknown UI panel: #{id}" unless workspace.panels.includes?(panel_id)
+        panel = workspace.panels.panels[panel_id]?
+        raise "unknown UI panel: #{id}" unless panel && panel.owner == owner
         workspace.focus(panel_id)
         panel_id
       end
@@ -221,7 +227,7 @@ module Cri
 
       private def plugin_buffer(id : String, owner : String) : TextBuffer
         buffer = buffers.get(plugin_buffer_id(id, owner)).as?(TextBuffer)
-        raise "unknown UI buffer: #{id}" unless buffer
+        raise "unknown UI buffer: #{id}" unless buffer && buffer.owner == owner
         buffer
       end
 
@@ -284,6 +290,14 @@ module Cri
         keymap.bind(Mode::Normal, "j", "buffer.cursor_down")
         keymap.bind(Mode::Normal, "k", "buffer.cursor_up")
         keymap.bind(Mode::Normal, "l", "buffer.cursor_right")
+        keymap.bind(Mode::Normal, "0", "buffer.line_start")
+        keymap.bind(Mode::Normal, "^", "buffer.first_nonblank")
+        keymap.bind(Mode::Normal, "$", "buffer.line_end")
+        keymap.bind(Mode::Normal, "w", "buffer.word_forward")
+        keymap.bind(Mode::Normal, "b", "buffer.word_backward")
+        keymap.bind(Mode::Normal, "e", "buffer.word_end")
+        keymap.bind(Mode::Normal, "g g", "buffer.document_start")
+        keymap.bind(Mode::Normal, "G", "buffer.document_end")
         keymap.bind(Mode::Normal, "ctrl-e", "panel.scroll_down")
         keymap.bind(Mode::Normal, "ctrl-y", "panel.scroll_up")
         keymap.bind(Mode::Normal, "ctrl-d", "panel.page_down")
@@ -314,6 +328,14 @@ module Cri
         keymap.bind(Mode::Visual, "j", "buffer.cursor_down")
         keymap.bind(Mode::Visual, "k", "buffer.cursor_up")
         keymap.bind(Mode::Visual, "l", "buffer.cursor_right")
+        keymap.bind(Mode::Visual, "0", "buffer.line_start")
+        keymap.bind(Mode::Visual, "^", "buffer.first_nonblank")
+        keymap.bind(Mode::Visual, "$", "buffer.line_end")
+        keymap.bind(Mode::Visual, "w", "buffer.word_forward")
+        keymap.bind(Mode::Visual, "b", "buffer.word_backward")
+        keymap.bind(Mode::Visual, "e", "buffer.word_end")
+        keymap.bind(Mode::Visual, "g g", "buffer.document_start")
+        keymap.bind(Mode::Visual, "G", "buffer.document_end")
         keymap.bind(Mode::Visual, "escape", "mode.normal")
         keymap.bind(Mode::Visual, "ctrl-c", "mode.normal")
         keymap.bind(Mode::Visual, "y", "selection.yank")

@@ -11,7 +11,6 @@ crystal run src/cri.cr -- doctor
 crystal run src/cri.cr -- extensions list
 crystal run src/cri.cr -- extensions invoke github_issue tool github.get_issue '{}'
 crystal run src/cri.cr -- tool list
-crystal run src/cri.cr -- tool call builtin.echo '{"hello":"world"}'
 crystal run src/cri.cr -- chat
 crystal run src/cri.cr -- tui
 crystal run src/cri.cr -- plugin init --lang zig my_plugin ./my_plugin
@@ -35,6 +34,11 @@ The fixture can be invoked with:
 ```sh
 cri extensions invoke fixture tool fixture.echo '{"hello":"world"}'
 ```
+
+The core does not register model-facing tools. Extensions contribute tools,
+and host-mediated APIs such as `filesystem.list` are available to them through
+effects. In the fullscreen TUI each tool invocation and API call asks for an
+explicit one-shot approval.
 
 ## Docs
 

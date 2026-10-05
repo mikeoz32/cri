@@ -8,13 +8,13 @@ module Cri
       def run(manifest : Extensions::Manifest, request : RequestEnvelope, handler : Effects::Handler) : ResponseEnvelope
         response = call(manifest, request)
         return response if response.effects.empty? || !response.ok
-        ResponseEnvelope.new(false, nil, [] of JSON::Any, "runtime cannot resume after effects")
+        ResponseEnvelope.new(false, nil, [] of Effects::Effect, "runtime cannot resume after effects")
       end
     end
 
     class UnimplementedRuntime < Runtime
       def call(manifest : Extensions::Manifest, request : RequestEnvelope) : ResponseEnvelope
-        ResponseEnvelope.new(false, nil, [] of JSON::Any, "WASM runtime is not wired yet for #{manifest.name}; request=#{request.kind}:#{request.name}")
+        ResponseEnvelope.new(false, nil, [] of Effects::Effect, "WASM runtime is not wired yet for #{manifest.name}; request=#{request.kind}:#{request.name}")
       end
     end
   end

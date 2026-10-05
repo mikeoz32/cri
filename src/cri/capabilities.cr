@@ -107,7 +107,7 @@ module Cri
     end
 
     class CapabilityBroker
-      getter backend : ApprovalBackend
+      property backend : ApprovalBackend
 
       def self.deny_all : self
         new(DenyAllBackend.new)

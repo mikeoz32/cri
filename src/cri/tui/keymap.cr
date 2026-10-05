@@ -37,7 +37,13 @@ module Cri
 
       def bind(mode : Mode, keys : String | Array(String), action : String)
         sequence = keys.is_a?(String) ? parse(keys) : keys
-        bindings.reject! { |binding| binding.mode == mode && binding.sequence == sequence }
+        bindings.reject! do |binding|
+          next false unless binding.mode == mode
+          next true if binding.sequence == sequence
+
+          binding.sequence.size < sequence.size && sequence.first(binding.sequence.size) == binding.sequence ||
+            sequence.size < binding.sequence.size && binding.sequence.first(sequence.size) == sequence
+        end
         bindings << KeyBinding.new(mode, sequence, action)
       end
 
@@ -83,7 +89,7 @@ module Cri
       end
 
       private def parse(keys : String) : Array(String)
-        keys.split.map { |key| key.downcase }
+        keys.split.map { |key| key.each_grapheme.to_a.size == 1 ? key : key.downcase }
       end
 
       private def matching_bindings(mode : Mode, pending : Array(String)) : Array(KeyBinding)

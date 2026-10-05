@@ -26,7 +26,7 @@ module Cri
       specs.uniq { |spec| spec.name }
     end
 
-    def call(name : String, input : JSON::Any) : ToolResult
+    def call(name : String, input : RawJSON) : ToolResult
       request = API::CapabilityRequest.new(
         "tool-#{Random::Secure.hex(12)}",
         "agent",

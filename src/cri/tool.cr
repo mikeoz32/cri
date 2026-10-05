@@ -1,15 +1,19 @@
 module Cri
-  alias ToolInput = JSON::Any
-  alias ToolOutput = JSON::Any
+  alias ToolInput = RawJSON
+  alias ToolOutput = RawJSON
 
   class ToolResult
     include JSON::Serializable
 
     property ok : Bool
-    property result : JSON::Any?
+    property result : RawJSON?
     property error : String?
 
-    def initialize(@ok : Bool, @result : JSON::Any? = nil, @error : String? = nil)
+    def initialize(@ok : Bool, @result : RawJSON? = nil, @error : String? = nil)
+    end
+
+    def initialize(ok : Bool, result : JSON::Any, error : String? = nil)
+      initialize(ok, RawJSON.from_any(result), error)
     end
   end
 
@@ -20,7 +24,11 @@ module Cri
     def initialize(@name : String, @description : String)
     end
 
-    abstract def call(input : JSON::Any) : ToolResult
+    abstract def call(input : RawJSON) : ToolResult
+
+    def call(input : JSON::Any) : ToolResult
+      call(RawJSON.from_any(input))
+    end
   end
 
   class EchoTool < Tool
@@ -28,7 +36,7 @@ module Cri
       super("builtin.echo", "Echo JSON input")
     end
 
-    def call(input : JSON::Any) : ToolResult
+    def call(input : RawJSON) : ToolResult
       ToolResult.new(true, input)
     end
   end
