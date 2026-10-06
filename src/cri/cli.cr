@@ -232,7 +232,7 @@ module Cri
         exit 1 unless tooling.build(project)
       when "test"
         project = argv.shift? || "."
-        input = JSON.parse(argv.shift? || "{}")
+        input = RawJSON.new(argv.shift? || "{}")
         exit 1 unless tooling.test(project, input)
       when "pack"
         project = argv.shift? || "."
