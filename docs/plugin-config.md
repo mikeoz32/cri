@@ -21,7 +21,9 @@ Example:
       "filesystem_read": [],
       "filesystem_write": [],
       "shell": false,
-      "model": false
+      "model": false,
+      "session_state": true,
+      "context": true
     },
     "untrusted_extension": {
       "enabled": false

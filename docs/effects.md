@@ -8,6 +8,8 @@ Dangerous operations are host-mediated. Extensions declare permissions in `exten
 - `file.read`
 - `filesystem.list`
 - `file.propose_edit`
+- `session.state.get`
+- `session.state.set`
 - `ui.notification`
 - `ui.status_update`
 - future: `tool.call`, `model.call`, `secret.resolve`
@@ -34,6 +36,43 @@ The first implemented plugin UI effect is `ui.notification`:
 ```
 
 The host validates the level and message size, then delivers it through the public UI sink.
+
+## Per-session extension state
+
+Extensions can store one JSON value per session, namespaced by the calling extension:
+
+```json
+{"type":"session.state.get"}
+{"type":"session.state.set","value":{"todos":[{"id":"a","text":"Ship it","done":false}]}}
+```
+
+The host enforces the extension's `session_state` declaration and configured grant, then requests one-shot approval for each read or write. Values are capped at 1 MiB and stored in the session record. A successful write emits `session.extension_state.updated` with the session and extension IDs; the event does not include the stored value.
+
+## Model context providers
+
+Extensions may declare `[[context_providers]]`. Before every model request, the host invokes each granted provider in stable manifest order with the session ID, conversation, available tools, and context blocks added so far. The provider returns a patch:
+
+The input has this shape:
+
+```json
+{
+  "session_id": "0123456789abcdef",
+  "messages": [{"role":"user","content":"What is left?"}],
+  "tools": [],
+  "blocks": []
+}
+```
+
+Providers can use `session.state.get` and `session.state.set` effects to read or update their own session state while they run.
+
+```json
+{
+  "add": [{"id":"open-todos","content":"Open tasks: Ship it"}],
+  "remove": ["extension/other_extension/obsolete-note"]
+}
+```
+
+The host namespaces added block IDs by extension and sends the resulting blocks as ephemeral system messages. They are not inserted into the saved transcript. Context providers require the `context` permission and one-shot `context.modify` approval for each invocation. They can remove extension-contributed blocks, but cannot remove the conversation transcript or host-owned instructions. A failed provider is reported as `extension.context.error` and does not stop the model request.
 
 ## Effect loop
 

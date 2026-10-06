@@ -26,7 +26,9 @@ describe Cri::Permissions::GrantPolicy do
         "workspace": {
           "network": ["https://example.test"],
           "filesystem_read": ["/tmp/project"],
-          "model": true
+          "model": true,
+          "session_state": true,
+          "context": true
         }
       }
     }))
@@ -35,10 +37,14 @@ describe Cri::Permissions::GrantPolicy do
     loaded.extensions["workspace"].network.should eq(["https://example.test"])
     loaded.extensions["workspace"].filesystem_read.should eq(["/tmp/project"])
     loaded.extensions["workspace"].model.should be_true
+    loaded.extensions["workspace"].session_state.should be_true
+    loaded.extensions["workspace"].context.should be_true
 
     policy = Cri::Permissions::GrantPolicy.new
     policy.merge(loaded)
     policy.for_extension("workspace").network.should eq(["https://example.test"])
+    policy.for_extension("workspace").session_state.should be_true
+    policy.for_extension("workspace").context.should be_true
   end
 
   it "rejects values that do not match the grant schema" do

@@ -7,6 +7,10 @@ module Cri
     def call(name : String, input : JSON::Any) : ToolResult
       call(name, RawJSON.from_any(input))
     end
+
+    def call(name : String, input : RawJSON, session : Session?) : ToolResult
+      call(name, input)
+    end
   end
 
   class ToolRegistry < ToolExecutor
@@ -37,6 +41,10 @@ module Cri
       tool.call(input)
     rescue ex
       ToolResult.new(false, nil, ex.message || ex.class.name)
+    end
+
+    def call(name : String, input : RawJSON, session : Session?) : ToolResult
+      call(name, input)
     end
   end
 end

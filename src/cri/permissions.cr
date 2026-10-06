@@ -10,9 +10,11 @@ module Cri
       property filesystem_write : Array(String) = [] of String
       property shell : Bool = false
       property model : Bool = false
+      property session_state : Bool = false
+      property context : Bool = false
 
       def to_grant_set : GrantSet
-        GrantSet.new(network, secrets, filesystem_read, filesystem_write, shell, model)
+        GrantSet.new(network, secrets, filesystem_read, filesystem_write, shell, model, session_state, context)
       end
     end
 
@@ -40,8 +42,10 @@ module Cri
       property filesystem_write : Array(String)
       property shell : Bool
       property model : Bool
+      property session_state : Bool
+      property context : Bool
 
-      def initialize(@network = [] of String, @secrets = [] of String, @filesystem_read = [] of String, @filesystem_write = [] of String, @shell = false, @model = false)
+      def initialize(@network = [] of String, @secrets = [] of String, @filesystem_read = [] of String, @filesystem_write = [] of String, @shell = false, @model = false, @session_state = false, @context = false)
       end
     end
 
@@ -73,6 +77,14 @@ module Cri
 
       def allows_file_write?(path : String, requested : Request) : Bool
         path_allowed?(path, requested.filesystem_write, create: true) && path_allowed?(path, filesystem_write, create: true)
+      end
+
+      def allows_session_state?(requested : Request) : Bool
+        requested.session_state && session_state
+      end
+
+      def allows_context?(requested : Request) : Bool
+        requested.context && context
       end
 
       private def network_allowed?(target : URI, patterns : Array(String)) : Bool

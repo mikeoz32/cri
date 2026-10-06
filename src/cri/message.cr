@@ -80,6 +80,10 @@ module Cri
       ToolMessage.new(call.name, call.id, content).as(Message)
     end
 
+    def self.system(content : String) : Message
+      SystemMessage.new(content).as(Message)
+    end
+
     # Compatibility adapter for older callers. Session storage and provider
     # request construction use the typed message directly.
     def to_api_json : JSON::Any
@@ -117,7 +121,17 @@ module Cri
     end
   end
 
+  class SystemMessage < Message
+    def initialize(content : String)
+      @role = "system"
+      @content = content
+      @name = nil
+      @tool_call_id = nil
+      @tool_calls = [] of ToolCall
+    end
+  end
+
   class Message
-    use_json_discriminator "role", {user: UserMessage, assistant: AssistantMessage, tool: ToolMessage}
+    use_json_discriminator "role", {user: UserMessage, assistant: AssistantMessage, tool: ToolMessage, system: SystemMessage}
   end
 end

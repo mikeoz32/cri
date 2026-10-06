@@ -33,6 +33,13 @@ module Cri
     class FileProposeEditEffect < Effect
     end
 
+    class SessionStateGetEffect < Effect
+    end
+
+    class SessionStateSetEffect < Effect
+      property value : RawJSON
+    end
+
     class NotificationEffect < Effect
       property message : String?
       property level : String = "info"
@@ -100,6 +107,8 @@ module Cri
         "file.read"              => FileReadEffect,
         "filesystem.list"        => FilesystemListEffect,
         "file.propose_edit"      => FileProposeEditEffect,
+        "session.state.get"      => SessionStateGetEffect,
+        "session.state.set"      => SessionStateSetEffect,
         "ui.notification"        => NotificationEffect,
         "ui.buffer.create"       => BufferCreateEffect,
         "ui.buffer.append"       => BufferAppendEffect,

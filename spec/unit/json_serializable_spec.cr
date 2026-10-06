@@ -28,6 +28,7 @@ describe "typed JSON configuration" do
     model = Cri::ModelRef.new("provider/model", "provider", "model", "Model title")
     session = Cri::Session.new("session-1", model, Cri::ModelSettings.new("medium"))
     session.user("hello")
+    session.set_extension_data("todo", Cri::RawJSON.new(%({"items":[{"text":"ship it","done":false}]})))
 
     file_record = Cri::SessionFile.from_json(session.to_json)
     file_record.settings.reasoning_effort.should eq("medium")
@@ -37,6 +38,7 @@ describe "typed JSON configuration" do
     loaded.settings.reasoning_effort.should eq("medium")
     loaded.current_model.not_nil!.title.should eq("Model title")
     loaded.messages.last.content.should eq("hello")
+    loaded.extension_data("todo").not_nil!.raw.should eq(%({"items":[{"text":"ship it","done":false}]}))
   end
 
   it "fills model metadata defaults when loading older session records" do

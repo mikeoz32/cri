@@ -126,3 +126,61 @@ describe Cri::APIClients::OpenAICompatible do
     server.try(&.close)
   end
 end
+
+describe Cri::APIClients::OpenAIResponses do
+  it "uses native web search and preserves web citations and function calls" do
+    server = HTTP::Server.new do |context|
+      context.request.method.should eq("POST")
+      context.request.path.should eq("/v1/responses")
+      context.request.headers["Authorization"].should eq("Bearer test-token")
+      body = JSON.parse(context.request.body.try(&.gets_to_end) || "{}")
+      body["model"].as_s.should eq("gpt-4.1")
+      body["stream"].as_bool.should be_false
+      body["tools"].as_a.map { |tool| tool["type"].as_s }.should eq(["web_search", "function"])
+      body["tools"].as_a.last["name"].as_s.should eq("demo_tool")
+      body["input"].as_a.first["content"].as_s.should eq("Find recent Crystal news")
+      context.response.content_type = "application/json"
+      context.response.print(%({"output":[{"type":"message","content":[{"type":"output_text","text":"Crystal released a new version.","annotations":[{"type":"url_citation","url":"https://crystal-lang.org/releases/","title":"Crystal releases"}]}]},{"type":"function_call","call_id":"call-1","name":"demo_tool","arguments":"{\\"ok\\":true}"}]}))
+    end
+    address = server.bind_tcp("127.0.0.1", 0)
+    spawn { server.listen }
+
+    client = Cri::APIClients::OpenAIResponses.new(
+      "http://127.0.0.1:#{address.port}/v1/chat/completions",
+      "gpt-4.1",
+      "test-token"
+    )
+    response = client.complete([Cri::Message.user("Find recent Crystal news")], [Cri::ToolSpec.new("demo.tool", "Demonstration tool")])
+
+    response.content.not_nil!.should contain("Crystal released a new version.")
+    response.content.not_nil!.should contain("[Crystal releases](https://crystal-lang.org/releases/)")
+    response.tool_calls.size.should eq(1)
+    response.tool_calls.first.name.should eq("demo.tool")
+    JSON.parse(response.tool_calls.first.arguments.raw)["ok"].as_bool.should be_true
+  ensure
+    server.try(&.close)
+  end
+
+  it "streams response text once and adds citations from the completed output item" do
+    server = HTTP::Server.new do |context|
+      context.request.path.should eq("/v1/responses")
+      body = JSON.parse(context.request.body.try(&.gets_to_end) || "{}")
+      body["stream"].as_bool.should be_true
+      context.response.content_type = "text/event-stream"
+      context.response.print("data: {\"type\":\"response.output_text.delta\",\"delta\":\"Answer\"}\n\n")
+      context.response.print("data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Answer\",\"annotations\":[{\"type\":\"url_citation\",\"url\":\"https://example.com\",\"title\":\"Example\"}]}]}}\n\n")
+      context.response.print("data: [DONE]\n\n")
+    end
+    address = server.bind_tcp("127.0.0.1", 0)
+    spawn { server.listen }
+    client = Cri::APIClients::OpenAIResponses.new("http://127.0.0.1:#{address.port}/v1/responses", "gpt-4.1", "test-token")
+
+    chunks = [] of String
+    response = client.complete_stream([Cri::Message.user("Search")], [] of Cri::ToolSpec) { |chunk| chunks << chunk }
+
+    chunks.should eq(["Answer"])
+    response.content.should eq("Answer\n\nSources:\n- [Example](https://example.com)\n")
+  ensure
+    server.try(&.close)
+  end
+end

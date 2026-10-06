@@ -27,6 +27,10 @@ module Cri
     end
 
     def call(name : String, input : RawJSON) : ToolResult
+      call(name, input, nil)
+    end
+
+    def call(name : String, input : RawJSON, session : Session?) : ToolResult
       request = API::CapabilityRequest.new(
         "tool-#{Random::Secure.hex(12)}",
         "agent",
@@ -41,7 +45,7 @@ module Cri
       manifest = extensions.enabled(grants).find { |candidate| candidate.tools.any? { |tool| tool.name == name } }
       return ToolResult.new(false, nil, "unknown tool: #{name}") unless manifest
 
-      response = invoker.invoke(manifest, "tool", name, input)
+      response = invoker.invoke(manifest, "tool", name, input, session: session)
       ToolResult.new(response.ok, response.result, response.error)
     end
   end

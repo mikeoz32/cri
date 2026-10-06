@@ -58,6 +58,19 @@ pub fn notify(message: []const u8, output: []u8) []const u8 {
     return output[0..index];
 }
 
+pub const session_state = struct {
+    pub fn get(output: []u8) []const u8 {
+        return append(output, 0, "{\"type\":\"session.state.get\"}");
+    }
+
+    pub fn set(value_json: []const u8, output: []u8) []const u8 {
+        var index = append(output, 0, "{\"type\":\"session.state.set\",\"value\":");
+        index = append(output, index, value_json);
+        index = append(output, index, "}");
+        return output[0..index];
+    }
+};
+
 pub const ui = struct {
     pub fn buffer_create(id: []const u8, content: []const u8, output: []u8) []const u8 {
         return buffer_mutation("ui.buffer.create", id, content, output);

@@ -14,6 +14,7 @@ module Cri
     getter provider : Provider
     getter tools : ToolExecutor
     getter events : EventBus
+    getter context_pipeline : Extensions::ContextPipeline?
     getter max_steps : Int32
     getter max_input_bytes : Int64
     getter max_tool_calls_per_step : Int32
@@ -26,6 +27,7 @@ module Cri
       @tools : ToolExecutor,
       @events : EventBus = EventBus.new,
       @session : Session = Session.new,
+      @context_pipeline : Extensions::ContextPipeline? = nil,
       @max_steps : Int32 = MAX_STEPS,
       @max_input_bytes : Int64 = MAX_INPUT_BYTES,
       @max_tool_calls_per_step : Int32 = MAX_TOOL_CALLS_PER_STEP,
@@ -53,14 +55,15 @@ module Cri
         raise "agent step limit exceeded" if step > max_steps
 
         streamed_bytes = 0_i64
+        context_messages = context_pipeline.try(&.messages_for(session, tools.specs)) || session.messages
         response = if provider.supports_streaming?
-                     provider.complete_stream(session.messages, tools.specs, session.settings) do |chunk|
+                     provider.complete_stream(context_messages, tools.specs, session.settings) do |chunk|
                        streamed_bytes += chunk.bytesize
                        raise LimitError.new("agent response exceeds #{max_response_bytes} bytes") if streamed_bytes > max_response_bytes
                        on_text.call(chunk)
                      end
                    else
-                     provider.complete(session.messages, tools.specs, session.settings)
+                     provider.complete(context_messages, tools.specs, session.settings)
                    end
         response_bytes = response.content.try(&.bytesize) || 0
         raise LimitError.new("agent response exceeds #{max_response_bytes} bytes") if response_bytes > max_response_bytes
@@ -79,7 +82,7 @@ module Cri
         return response.content || "" if response.tool_calls.empty?
 
         response.tool_calls.each do |call|
-          result = tools.call(call.name, call.arguments)
+          result = tools.call(call.name, call.arguments, session)
           content = result.to_json
           raise LimitError.new("tool result exceeds #{max_tool_result_bytes} bytes") if content.bytesize > max_tool_result_bytes
           session.add(Message.tool(call, content))

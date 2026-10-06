@@ -151,6 +151,8 @@ module Cri
         when "filesystem_write" then permissions.filesystem_write = array(value)
         when "shell"            then permissions.shell = boolean(value)
         when "model"            then permissions.model = boolean(value)
+        when "session_state"    then permissions.session_state = boolean(value)
+        when "context"          then permissions.context = boolean(value)
         end
       end
 

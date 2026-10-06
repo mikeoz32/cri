@@ -5,6 +5,7 @@ module Cri
       DEFAULT_HTTP_READ_TIMEOUT    = 30.seconds
       DEFAULT_HTTP_RESPONSE_BYTES  = 4_i64 * 1024_i64 * 1024_i64
       MAX_HTTP_REQUEST_BYTES       = 1_i64 * 1024_i64 * 1024_i64
+      MAX_SESSION_STATE_BYTES      = 1_i64 * 1024_i64 * 1024_i64
 
       getter grants : Permissions::GrantSet
       getter requested : Permissions::Request
@@ -14,6 +15,8 @@ module Cri
       getter actor : String
       getter provider_sink : Proc(JSON::Any, Nil)?
       getter workspace_root : String
+      getter session : Session?
+      getter events : EventBus
 
       def initialize(
         @grants : Permissions::GrantSet,
@@ -27,6 +30,8 @@ module Cri
         @actor : String = "host",
         @provider_sink : Proc(JSON::Any, Nil)? = nil,
         @workspace_root : String = Dir.current,
+        @session : Session? = nil,
+        @events : EventBus = EventBus.new,
       )
       end
 
@@ -36,6 +41,8 @@ module Cri
         when FileReadEffect        then handle_file_read(effect)
         when FilesystemListEffect  then handle_filesystem_list(effect)
         when FileProposeEditEffect then result(effect, true, {"accepted" => false, "message" => "edit proposal recorded; apply flow not implemented yet"})
+        when SessionStateGetEffect then handle_session_state_get(effect)
+        when SessionStateSetEffect then handle_session_state_set(effect)
         when NotificationEffect    then handle_notification(effect)
         when BufferCreateEffect    then handle_buffer_create(effect)
         when BufferAppendEffect    then handle_buffer_mutation(effect, "append")
@@ -285,6 +292,39 @@ module Cri
         return result(effect, false, nil, "file read permission denied for #{path}") unless resolved && grants.allows_file_read?(resolved, requested)
         return result(effect, false, nil, "capability approval denied") unless authorize("filesystem.read", resolved, "Read a file")
         result(effect, true, {"path" => resolved, "content" => File.read(resolved)})
+      end
+
+      private def handle_session_state_get(effect : SessionStateGetEffect) : Result
+        owner = extension_owner
+        return result(effect, false, nil, "session.state.get requires an extension owner") unless owner
+        return result(effect, false, nil, "session state permission denied") unless grants.allows_session_state?(requested)
+        current = session
+        return result(effect, false, nil, "session.state.get requires an active session") unless current
+        return result(effect, false, nil, "capability approval denied") unless authorize("session.state.read", current.id, "Read this extension's state for the active session")
+
+        Result.new(effect.type, true, current.extension_data(owner))
+      end
+
+      private def handle_session_state_set(effect : SessionStateSetEffect) : Result
+        owner = extension_owner
+        return result(effect, false, nil, "session.state.set requires an extension owner") unless owner
+        return result(effect, false, nil, "session state permission denied") unless grants.allows_session_state?(requested)
+        current = session
+        return result(effect, false, nil, "session.state.set requires an active session") unless current
+        return result(effect, false, nil, "session extension state exceeds #{MAX_SESSION_STATE_BYTES} bytes") if effect.value.bytesize > MAX_SESSION_STATE_BYTES
+        return result(effect, false, nil, "capability approval denied") unless authorize("session.state.write", current.id, "Update this extension's state for the active session")
+
+        current.set_extension_data(owner, effect.value)
+        events.emit(Event.new("session.extension_state.updated", JSON.parse({
+          "session_id"   => current.id,
+          "extension_id" => owner,
+        }.to_json), owner))
+        result(effect, true, {"updated" => true})
+      end
+
+      private def extension_owner : String?
+        return nil if actor == "host"
+        actor
       end
 
       private def handle_filesystem_list(effect : FilesystemListEffect) : Result

@@ -14,6 +14,7 @@ module Cri
     getter providers : ProviderRegistry
     getter transports : Transports::Registry
     getter api_clients : APIClientRegistry
+    getter context_pipeline : Extensions::ContextPipeline
 
     def initialize(
       @config : Config = Config.load,
@@ -27,7 +28,8 @@ module Cri
       register_api_clients
       @providers = ProviderRegistry.new(auth)
       @builtins = ToolRegistry.new
-      @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities, workspace_root: config.cwd)
+      @invoker = Extensions::Invoker.new(grants: config.grants, capabilities: capabilities, workspace_root: config.cwd, events: events)
+      @context_pipeline = Extensions::ContextPipeline.new(extensions, invoker, config.grants, capabilities, events)
       register_extension_provider_hooks
       @tools = ToolRouter.new(@builtins, @extensions, @invoker, config.grants)
       @commands = CommandRegistry.new
@@ -36,7 +38,7 @@ module Cri
     end
 
     def agent(provider : Provider, session : Session = Session.new) : Agent
-      Agent.new(provider, tools, events, session)
+      Agent.new(provider, tools, events, session, context_pipeline: context_pipeline)
     end
 
     def default_model : ModelRef
@@ -172,6 +174,10 @@ module Cri
 
     private def register_api_clients
       api_clients.register("openai") do |registration, secret|
+        transport = transports.build(registration.transport_type)
+        APIClients::OpenAIResponses.new(registration.endpoint, registration.model, secret, transport: transport)
+      end
+      api_clients.register("openai-compatible") do |registration, secret|
         transport = transports.build(registration.transport_type)
         APIClients::OpenAICompatible.new(registration.endpoint, registration.model, secret, transport: transport)
       end

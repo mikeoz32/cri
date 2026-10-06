@@ -26,6 +26,8 @@ filesystem_read = []
 filesystem_write = []
 shell = false
 model = false
+session_state = true
+context = true
 
 [[tools]]
 name = "github.get_issue"
@@ -41,8 +43,19 @@ entrypoint = "cri_call"
 id = "github.rate_limit"
 title = "GitHub rate limit"
 entrypoint = "cri_call"
+
+[[context_providers]]
+name = "github.context"
+entrypoint = "cri_call"
 ```
 
 ## Principle
 
 Extensions do not directly mutate the world. They request host-mediated effects: HTTP requests, file reads, proposed edits, notifications, status updates, model calls, or tool calls. The Crystal host enforces permissions and renders UI.
+
+`session_state` allows an extension to read and write its own namespaced JSON
+value for the active session through `session.state.get` and
+`session.state.set`. `context` allows it to inspect the conversation and
+contribute or filter extension context blocks through `[[context_providers]]`.
+Both require a matching user/project grant and runtime approval. Context blocks
+are rebuilt before each model request and are not persisted in the transcript.

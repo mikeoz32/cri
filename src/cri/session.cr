@@ -41,12 +41,14 @@ module Cri
     property current_model : SessionModelRef?
     property settings : ModelSettings = ModelSettings.new
     property messages : Array(Message) = [] of Message
+    property extension_state : Hash(String, RawJSON) = {} of String => RawJSON
 
     def initialize(
       @id : String,
       @current_model : SessionModelRef? = nil,
       @settings : ModelSettings = ModelSettings.new,
       @messages : Array(Message) = [] of Message,
+      @extension_state : Hash(String, RawJSON) = {} of String => RawJSON,
     )
     end
   end
@@ -56,11 +58,13 @@ module Cri
     getter messages = [] of Message
     getter current_model : ModelRef?
     getter settings : ModelSettings
+    getter extension_state : Hash(String, RawJSON)
 
     def initialize(
       @id : String = Random::Secure.hex(8),
       @current_model : ModelRef? = nil,
       @settings : ModelSettings = ModelSettings.new,
+      @extension_state : Hash(String, RawJSON) = {} of String => RawJSON,
     )
     end
 
@@ -68,6 +72,14 @@ module Cri
     end
 
     def set_settings(@settings : ModelSettings)
+    end
+
+    def extension_data(extension_id : String) : RawJSON?
+      extension_state[extension_id]?
+    end
+
+    def set_extension_data(extension_id : String, value : RawJSON) : Nil
+      @extension_state[extension_id] = value
     end
 
     def add(message : Message)
@@ -91,7 +103,8 @@ module Cri
         id,
         current_model.try { |model| SessionModelRef.from_model(model) },
         settings,
-        messages
+        messages,
+        extension_state
       ).to_json
     end
 
@@ -109,7 +122,8 @@ module Cri
       session = new(
         record.id,
         record.current_model.try(&.to_model_ref),
-        record.settings
+        record.settings,
+        record.extension_state
       )
       record.messages.each { |item| session.add(item) }
       session
