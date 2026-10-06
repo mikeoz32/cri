@@ -20,17 +20,19 @@ describe Cri::APIClients::OpenAICompatible do
       context.request.path.should eq("/backend-api/codex/responses")
       body = JSON.parse(context.request.body.try(&.gets_to_end) || "{}")
       body["stream"].as_bool.should be_true
-      if tools = body["tools"]?.try(&.as_a)
-        tools.size.should eq(1)
-        tools[0]["type"].as_s.should eq("function")
-        tools[0]["name"].as_s.should eq("demo_tool")
+      tools = body["tools"].as_a
+      tools.first["type"].as_s.should eq("web_search")
+      if tools.size > 1
+        tools.size.should eq(2)
+        tools[1]["type"].as_s.should eq("function")
+        tools[1]["name"].as_s.should eq("demo_tool")
       end
       input = body["input"].as_a
       if input.any? { |item| item["type"]?.try(&.as_s?) == "function_call" }
         input.any? { |item| item["type"]?.try(&.as_s?) == "function_call_output" }.should be_true
         input.any? { |item| item["tool_calls"]? }.should be_false
       end
-      context.response.print(%({"output":[{"type":"message","content":[{"type":"output_text","text":"hello from subscription"}]}]}))
+      context.response.print(%({"output":[{"type":"message","content":[{"type":"output_text","text":"hello from subscription","annotations":[{"type":"url_citation","url":"https://example.com","title":"Example"}]}]}]}))
     end
     address = server.bind_tcp("127.0.0.1", 0)
     spawn { server.listen }
@@ -41,7 +43,7 @@ describe Cri::APIClients::OpenAICompatible do
     )
 
     response = client.complete([Cri::Message.user("hello")], [] of Cri::ToolSpec)
-    response.content.should eq("hello from subscription")
+    response.content.should eq("hello from subscription\n\nSources:\n- [Example](https://example.com)\n")
 
     # Responses API tools must carry the type at the top level, unlike the
     # Chat Completions function wrapper.
@@ -52,7 +54,7 @@ describe Cri::APIClients::OpenAICompatible do
       %({"access_token":"access-token","account_id":"account-1"})
     )
     tool_response = tool_client.complete([Cri::Message.user("hello")], [tool])
-    tool_response.content.should eq("hello from subscription")
+    tool_response.content.should eq("hello from subscription\n\nSources:\n- [Example](https://example.com)\n")
 
     call = Cri::ToolCall.new("call-1", "demo.tool", JSON.parse(%({"city":"Lviv"})))
     history = [
@@ -61,7 +63,34 @@ describe Cri::APIClients::OpenAICompatible do
       Cri::Message.tool(call, %({"temperature":10})),
     ]
     history_response = tool_client.complete(history, [tool])
-    history_response.content.should eq("hello from subscription")
+    history_response.content.should eq("hello from subscription\n\nSources:\n- [Example](https://example.com)\n")
+  ensure
+    server.try(&.close)
+  end
+
+  it "streams native search citations on the ChatGPT subscription endpoint" do
+    server = HTTP::Server.new do |context|
+      context.request.path.should eq("/backend-api/codex/responses")
+      body = JSON.parse(context.request.body.try(&.gets_to_end) || "{}")
+      body["tools"].as_a.first["type"].as_s.should eq("web_search")
+      context.response.content_type = "text/event-stream"
+      context.response.print("data: {\"type\":\"response.output_text.delta\",\"delta\":\"Found it.\"}\n\n")
+      context.response.print("data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Found it.\",\"annotations\":[{\"type\":\"url_citation\",\"url\":\"https://example.com/news\",\"title\":\"News\"}]}]}}\n\n")
+      context.response.print("data: [DONE]\n\n")
+    end
+    address = server.bind_tcp("127.0.0.1", 0)
+    spawn { server.listen }
+    client = Cri::APIClients::OpenAICodexResponses.new(
+      "http://127.0.0.1:#{address.port}/backend-api/codex/responses",
+      "gpt-5",
+      %({"access_token":"access-token","account_id":"account-1"})
+    )
+
+    chunks = [] of String
+    response = client.complete_stream([Cri::Message.user("Search this")], [] of Cri::ToolSpec) { |chunk| chunks << chunk }
+
+    chunks.should eq(["Found it."])
+    response.content.should eq("Found it.\n\nSources:\n- [News](https://example.com/news)\n")
   ensure
     server.try(&.close)
   end

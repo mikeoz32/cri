@@ -38,6 +38,7 @@ module Cri
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
         content = String::Builder.new
         tool_calls = [] of ToolCall
+        citations = {} of String => String
         tool_names = tool_name_map(tools)
         response.body.each_line do |line|
           data = line.strip
@@ -50,6 +51,7 @@ module Cri
                 content << (event["delta"]?.try(&.as_s?) || "")
               when "response.output_item.done", "response.function_call_arguments.done"
                 item = event["item"]? || event
+                collect_citations(item, citations)
                 if call = parse_tool_call(item, tool_names)
                   tool_calls << call unless tool_calls.any? { |existing| existing.id == call.id }
                 end
@@ -59,18 +61,20 @@ module Cri
         end
         text = content.to_s
         return parse_response(JSON.parse(response.body), tool_names) if text.empty? && response.body.lstrip.starts_with?("{")
+        text = with_sources(text, citations)
         AssistantResponse.new(text.empty? ? nil : text, tool_calls)
       end
 
       protected def complete_stream_internal(messages : Array(Message), tools : Array(ToolSpec), settings : ModelSettings) : AssistantResponse
         content = String::Builder.new
         tool_calls = [] of ToolCall
+        citations = {} of String => String
         tool_names = tool_name_map(tools)
         response = transport.stream(endpoint, headers, request_body(messages, tools, settings, true)) do |data|
-          process_stream_event(data, content, tool_calls, tool_names) unless data == "[DONE]"
+          process_stream_event(data, content, tool_calls, tool_names, citations) unless data == "[DONE]"
         end
         raise "Codex API error (#{response.status}): #{response.body}" unless response.status.in?(200...300)
-        text = content.to_s
+        text = with_sources(content.to_s, citations)
         AssistantResponse.new(text.empty? ? nil : text, tool_calls)
       end
 
@@ -102,17 +106,17 @@ module Cri
         end
         settings.temperature.try { |temperature| body["temperature"] = JSON::Any.new(temperature) }
         settings.max_output_tokens.try { |limit| body["max_output_tokens"] = JSON::Any.new(limit) }
-        unless tools.empty?
-          body["tools"] = JSON::Any.new(tools.map do |tool|
-            function = tool.to_json_any["function"]
-            JSON.parse({
-              "type"        => "function",
-              "name"        => codex_tool_name(function["name"].as_s),
-              "description" => function["description"],
-              "parameters"  => function["parameters"],
-            }.to_json)
-          end)
-        end
+        response_tools = [JSON.parse(%({"type":"web_search"}))] of JSON::Any
+        response_tools.concat(tools.map do |tool|
+          function = tool.to_json_any["function"]
+          JSON.parse({
+            "type"        => "function",
+            "name"        => codex_tool_name(function["name"].as_s),
+            "description" => function["description"],
+            "parameters"  => function["parameters"],
+          }.to_json)
+        end)
+        body["tools"] = JSON::Any.new(response_tools)
         body.to_json
       end
 
@@ -144,7 +148,7 @@ module Cri
         end
       end
 
-      private def process_stream_event(data : String, content : String::Builder, tool_calls : Array(ToolCall), names : Hash(String, String)) : Nil
+      private def process_stream_event(data : String, content : String::Builder, tool_calls : Array(ToolCall), names : Hash(String, String), citations : Hash(String, String)) : Nil
         event = JSON.parse(data)
         case event["type"]?.try(&.as_s?)
         when "response.output_text.delta"
@@ -153,6 +157,7 @@ module Cri
           emit_stream_text(delta)
         when "response.output_item.done", "response.function_call_arguments.done"
           item = event["item"]? || event
+          collect_citations(item, citations)
           if call = parse_tool_call(item, names)
             tool_calls << call unless tool_calls.any? { |existing| existing.id == call.id }
           end
@@ -184,6 +189,7 @@ module Cri
       private def parse_response(json : JSON::Any, names : Hash(String, String) = {} of String => String) : AssistantResponse
         output = json["output"]?.try(&.as_a) || [] of JSON::Any
         tool_calls = [] of ToolCall
+        citations = {} of String => String
         text = String.build do |result|
           output.each do |item|
             if item["type"]?.try(&.as_s?) == "function_call"
@@ -191,6 +197,7 @@ module Cri
                 tool_calls << call
               end
             elsif item["type"]?.try(&.as_s?) == "message"
+              collect_citations(item, citations)
               if content = item["content"]?.try(&.as_a)
                 content.each do |part|
                   result << part["text"].as_s if part["type"]?.try(&.as_s?) == "output_text"
@@ -199,7 +206,33 @@ module Cri
             end
           end
         end
-        AssistantResponse.new(text.empty? ? nil : text, tool_calls)
+        result = with_sources(text, citations)
+        AssistantResponse.new(result.empty? ? nil : result, tool_calls)
+      end
+
+      private def collect_citations(item : JSON::Any, citations : Hash(String, String)) : Nil
+        return unless item["type"]?.try(&.as_s?) == "message"
+        parts = item["content"]?.try(&.as_a) || [] of JSON::Any
+        parts.each do |part|
+          next unless part["type"]?.try(&.as_s?) == "output_text"
+          annotations = part["annotations"]?.try(&.as_a) || [] of JSON::Any
+          annotations.each do |citation|
+            next unless citation["type"]?.try(&.as_s?) == "url_citation"
+            if url = citation["url"]?.try(&.as_s?)
+              citations[url] = citation["title"]?.try(&.as_s?) || url
+            end
+          end
+        end
+        nil
+      end
+
+      private def with_sources(text : String, citations : Hash(String, String)) : String
+        return text if citations.empty?
+        String.build do |result|
+          result << text
+          result << "\n\nSources:\n"
+          citations.each { |url, title| result << "- [#{title}](#{url})\n" }
+        end
       end
 
       private def parse_credential(credential : String?) : {String, String}
